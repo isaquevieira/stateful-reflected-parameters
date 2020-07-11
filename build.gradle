@@ -6,6 +6,10 @@ repositories {
 
 dependencies {
     compile 'net.portswigger.burp.extender:burp-extender-api:1.7.13'
+	compile 'org.json:json:20200518'
+	//compile group: 'org.json', name: 'json', version: '20200518'
+	//implementation 'org.json:json:20200518'
+    
 }
 
 sourceSets {

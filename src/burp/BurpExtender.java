@@ -1,8 +1,12 @@
+// https://mkyong.com/gradle/gradle-create-a-jar-file-with-dependencies/
+
 package burp;
 
+import org.json.JSONObject;
 import java.awt.Component;
 import java.net.URL;
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.List;
 import javax.swing.JMenuItem;
 import javax.swing.JPopupMenu;
@@ -186,10 +190,25 @@ public class BurpExtender extends AbstractTableModel implements IBurpExtender, I
         return splitPane;
     }
 
+     // ref: https://stackoverflow.com/a/24372548
+ 	 // ref: https://stackoverflow.com/a/30709527/13912378
+ 	 public static List<String> printJSONObject(JSONObject resobj ) {
+ 		 List<String> values = new ArrayList<String>();
+ 		 for(Iterator iterator = resobj.keySet().iterator(); iterator.hasNext();) {
+ 			 String key = (String) iterator.next();
+ 			 if ( resobj.get(key) instanceof JSONObject ) {
+ 				 JSONObject child = new JSONObject(resobj.get(key).toString());
+ 				 values.addAll(printJSONObject(child));
+ 			 } else {
+ 				 values.add(key);
+ 			 }
+ 		 }
+ 		 return values;
+ 	 }
+    
     //
     // implement IHttpListener
     //
-    
     @Override
     public void processHttpMessage(int toolFlag, boolean messageIsRequest, IHttpRequestResponse messageInfo)
     {
@@ -198,6 +217,19 @@ public class BurpExtender extends AbstractTableModel implements IBurpExtender, I
         {
             if (callbacks.isInScope(helpers.analyzeRequest(messageInfo).getUrl()))
             {
+            	if (helpers.analyzeRequest(messageInfo).getContentType() == IRequestInfo.CONTENT_TYPE_JSON) {
+        			try {
+        				String response = new String(messageInfo.getResponse());
+        				JSONObject resobj = new JSONObject(response);
+        				List<String> values = printJSONObject(resobj);
+        				 for (String out:values)
+        					 System.out.println(out);
+        			} catch (Exception e) {
+        				System.out.println("Falha ao fazer parser no JSON");
+        				e.printStackTrace();
+        			}
+        		}
+            	
                 IHttpRequestResponseWithMarkers messageInfoMarked = callbacks.applyMarkers(messageInfo, null, null);
                 List<IParameter> params = helpers.analyzeRequest(messageInfo).getParameters();
                 String response = new String(messageInfo.getResponse());
