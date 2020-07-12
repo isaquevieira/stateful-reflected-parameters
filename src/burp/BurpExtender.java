@@ -6,8 +6,12 @@ import org.json.JSONObject;
 import java.awt.Component;
 import java.net.URL;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
+
 import javax.swing.JMenuItem;
 import javax.swing.JPopupMenu;
 import javax.swing.JScrollPane;
@@ -39,6 +43,7 @@ public class BurpExtender extends AbstractTableModel implements IBurpExtender, I
     private final List<ReflectedEntry> reflectedEntryList = new ArrayList<>();
     private IHttpRequestResponse currentlyDisplayedItem;
     private PrintWriter stdout;
+    Map<IHttpRequestResponse, List<String>> historicOfRequests = new HashMap<IHttpRequestResponse, List<String>>();
     
     // Right click menu elements
     private JMenuItem menuItemScannerAll;
@@ -65,7 +70,7 @@ public class BurpExtender extends AbstractTableModel implements IBurpExtender, I
         helpers = callbacks.getHelpers();
         
         // set our extension name
-        callbacks.setExtensionName("Reflection v0.26");
+        callbacks.setExtensionName("Stateful Reflection v0.01");
         
         // obtain our output and error streams
         stdout = new PrintWriter(callbacks.getStdout(), true);
@@ -166,9 +171,9 @@ public class BurpExtender extends AbstractTableModel implements IBurpExtender, I
                 // register ourselves as an HTTP listener
                 callbacks.registerHttpListener(BurpExtender.this); 
                 
-                stdout.println("Reflection plugin v0.26");
-                stdout.println("Author: Marek Zmyslowski");
-                stdout.println("Email: marekzmyslowski@poczta.onet.pl");
+                stdout.println("Stateful Reflection plugin v0.26");
+                stdout.println("Author: ASSF");
+                stdout.println("Email: ");
             }
         });
 
@@ -200,7 +205,7 @@ public class BurpExtender extends AbstractTableModel implements IBurpExtender, I
  				 JSONObject child = new JSONObject(resobj.get(key).toString());
  				 values.addAll(printJSONObject(child));
  			 } else {
- 				 values.add(key);
+ 				 values.add((String) resobj.get(key).toString());
  			 }
  		 }
  		 return values;
@@ -217,13 +222,20 @@ public class BurpExtender extends AbstractTableModel implements IBurpExtender, I
         {
             if (callbacks.isInScope(helpers.analyzeRequest(messageInfo).getUrl()))
             {
-            	if (helpers.analyzeRequest(messageInfo).getContentType() == IRequestInfo.CONTENT_TYPE_JSON) {
+            	IResponseInfo iResponse = helpers.analyzeResponse(messageInfo.getResponse());
+            	if (iResponse.getInferredMimeType() == "JSON") {
         			try {
         				String response = new String(messageInfo.getResponse());
-        				JSONObject resobj = new JSONObject(response);
+        				int bodyOffset = iResponse.getBodyOffset();
+        				String responseBody = response.substring(bodyOffset);
+                	   	stdout.println(responseBody);
+        				JSONObject resobj = new JSONObject(responseBody);
+        				//JSONObject resobj = new JSONObject(response);
         				List<String> values = printJSONObject(resobj);
-        				 for (String out:values)
-        					 System.out.println(out);
+        				 for (String out:values) {
+        				 	 stdout.println(out);
+        				 }
+         				historicOfRequests.put(messageInfo, values);
         			} catch (Exception e) {
         				System.out.println("Falha ao fazer parser no JSON");
         				e.printStackTrace();
