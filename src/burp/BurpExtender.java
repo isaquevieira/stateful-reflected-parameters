@@ -186,7 +186,7 @@ public class BurpExtender extends AbstractTableModel implements IBurpExtender, I
     @Override
     public String getTabCaption()
     {
-        return "Reflection";
+        return "Stateful Reflection";
     }
 
     @Override
@@ -197,6 +197,7 @@ public class BurpExtender extends AbstractTableModel implements IBurpExtender, I
 
      // ref: https://stackoverflow.com/a/24372548
  	 // ref: https://stackoverflow.com/a/30709527/13912378
+    // Extract the values from a JSON object
  	 public static List<String> printJSONObject(JSONObject resobj ) {
  		 List<String> values = new ArrayList<String>();
  		 for(Iterator iterator = resobj.keySet().iterator(); iterator.hasNext();) {
@@ -211,14 +212,11 @@ public class BurpExtender extends AbstractTableModel implements IBurpExtender, I
  		 return values;
  	 }
     
-    //
-    // implement IHttpListener
-    //
-    @Override
-    public void processHttpMessage(int toolFlag, boolean messageIsRequest, IHttpRequestResponse messageInfo)
-    {
-        // Process only responses from Proxy or Spider tool
-        if (!messageIsRequest && (toolFlag == IBurpExtenderCallbacks.TOOL_SPIDER || toolFlag == IBurpExtenderCallbacks.TOOL_PROXY))
+ 	// Analyze Http responses, registering json values in memory
+ 	public void analyzeHttpResponse(int toolFlag, boolean messageIsRequest, IHttpRequestResponse messageInfo) {
+ 	// Process only responses from Proxy or Repeater
+        if (!messageIsRequest && (toolFlag == IBurpExtenderCallbacks.TOOL_PROXY
+        		|| toolFlag == IBurpExtenderCallbacks.TOOL_REPEATER))
         {
             if (callbacks.isInScope(helpers.analyzeRequest(messageInfo).getUrl()))
             {
@@ -236,12 +234,99 @@ public class BurpExtender extends AbstractTableModel implements IBurpExtender, I
         				 	 stdout.println(out);
         				 }
          				historicOfRequests.put(messageInfo, values);
+         				// Teste de adicao de linha na tabela
+//         				synchronized(reflectedEntryList)
+//                        {
+//                            int row = reflectedEntryList.size();
+//                            reflectedEntryList.add(new ReflectedEntry(callbacks.applyMarkers(messageInfo, null, null), helpers.analyzeRequest(messageInfo).getUrl(), 
+//                                    helpers.analyzeRequest(messageInfo).getMethod(), null, callbacks.getToolName(toolFlag)));
+//                            fireTableRowsInserted(row, row);
+//                        }
         			} catch (Exception e) {
-        				System.out.println("Falha ao fazer parser no JSON");
+        				System.out.println("Error to parser JSON");
         				e.printStackTrace();
         			}
-        		}
-            	
+        		}   	
+            }
+        }
+ 	}
+ 	
+ 	
+ 	// Look for refection in HttpRequests
+ 	private void analyzeHttpRequest(int toolFlag, boolean messageIsRequest, IHttpRequestResponse messageInfo) {
+ 		// Process only requests from Proxy, or Spider tool, or Repeater
+        if (messageIsRequest && (toolFlag == IBurpExtenderCallbacks.TOOL_PROXY
+        		|| toolFlag == IBurpExtenderCallbacks.TOOL_REPEATER))
+        {      	
+        	URL url = helpers.analyzeRequest(messageInfo).getUrl();
+            if (callbacks.isInScope(url))
+            {
+            	IRequestInfo iRequest = helpers.analyzeRequest(messageInfo.getRequest());
+            	stdout.println("callbacks.isInScope");
+            	IHttpRequestResponseWithMarkers messageInfoMarked = callbacks.applyMarkers(messageInfo, null, null);
+                List<int[]> requestMarkers = new ArrayList<>();
+                List<IParameter> params = iRequest.getParameters();
+                List<String[]> parameters = new ArrayList<>();
+        		List<String> reflectedValues = new ArrayList<String>();
+            	//stdout.println(request);
+        		
+                for (IParameter param: params)
+                {
+                	stdout.println(param.getValue());
+                    if (historicOfRequests.containsValue(param.getValue())) {
+                    	reflectedValues.add(param.getValue());
+                    	requestMarkers.add(new int[] {param.getValueStart(),param.getValueEnd()});
+                    	messageInfoMarked = callbacks.applyMarkers(messageInfo, requestMarkers, null);
+                        parameters.add(new String[]{param.getName(), param.getValue(), String.join(",", reflectedValues)});
+                    }
+                }
+                
+                //TODO: scan url
+                String pathParts[] = url.getPath().split("/");
+                for (String pathPart: pathParts) {
+                	for(Map.Entry<IHttpRequestResponse, List<String>> entry : historicOfRequests.entrySet()) {
+                	    if (entry.getValue().contains(pathPart)) {
+                    		stdout.println("* "+url.getPath() + "\t" + pathPart);                	    	
+                	    }
+                	}
+                }
+                
+                // TODO: scan headers
+//                List<String> headers = iRequest.getHeaders();
+//                for (String header: headers) {
+//                	stdout.println(header);
+//                }
+                
+                if(!reflectedValues.isEmpty()) {
+                    synchronized(reflectedEntryList)
+                    {
+                        int row = reflectedEntryList.size();
+                        reflectedEntryList.add(new ReflectedEntry(messageInfoMarked, helpers.analyzeRequest(messageInfo).getUrl(), 
+                                helpers.analyzeRequest(messageInfo).getMethod(), parameters, callbacks.getToolName(toolFlag)));
+                        fireTableRowsInserted(row, row);
+                    }
+                }
+            }
+        }
+		
+	}
+ 	
+    //
+    // implement IHttpListener
+    //
+    @Override
+    public void processHttpMessage(int toolFlag, boolean messageIsRequest, IHttpRequestResponse messageInfo)
+    {
+    	analyzeHttpResponse(toolFlag, messageIsRequest, messageInfo);
+    	analyzeHttpRequest(toolFlag, messageIsRequest, messageInfo);
+    	
+        // Process only responses from Proxy, or Spider tool, or Repeater
+        if (!messageIsRequest && (toolFlag == IBurpExtenderCallbacks.TOOL_SPIDER 
+        		|| toolFlag == IBurpExtenderCallbacks.TOOL_PROXY
+        		|| toolFlag == IBurpExtenderCallbacks.TOOL_REPEATER))
+        {
+            if (callbacks.isInScope(helpers.analyzeRequest(messageInfo).getUrl()))
+            {            	
                 IHttpRequestResponseWithMarkers messageInfoMarked = callbacks.applyMarkers(messageInfo, null, null);
                 List<IParameter> params = helpers.analyzeRequest(messageInfo).getParameters();
                 String response = new String(messageInfo.getResponse());
@@ -328,7 +413,7 @@ public class BurpExtender extends AbstractTableModel implements IBurpExtender, I
         }
     }
 
-    //
+	//
     // extend AbstractTableModel
     //
     
