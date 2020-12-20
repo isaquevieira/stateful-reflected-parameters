@@ -171,9 +171,9 @@ public class BurpExtender extends AbstractTableModel implements IBurpExtender, I
                 // register ourselves as an HTTP listener
                 callbacks.registerHttpListener(BurpExtender.this); 
                 
-                stdout.println("Stateful Reflection plugin v0.26");
+                stdout.println("Stateful Reflection plugin v0.01");
                 stdout.println("Author: ASSF");
-                stdout.println("Email: ");
+                stdout.println("Source: https://github.com/ailton07/stateful-reflected-parameters");
             }
         });
 
@@ -214,9 +214,8 @@ public class BurpExtender extends AbstractTableModel implements IBurpExtender, I
     
  	// Analyze Http responses, registering json values in memory
  	public void analyzeHttpResponse(int toolFlag, boolean messageIsRequest, IHttpRequestResponse messageInfo) {
- 	// Process only responses from Proxy or Repeater
-        if (!messageIsRequest && (toolFlag == IBurpExtenderCallbacks.TOOL_PROXY
-        		|| toolFlag == IBurpExtenderCallbacks.TOOL_REPEATER))
+ 	// Process only responses from Proxy
+        if (!messageIsRequest && (toolFlag == IBurpExtenderCallbacks.TOOL_PROXY))
         {
             if (callbacks.isInScope(helpers.analyzeRequest(messageInfo).getUrl()))
             {
