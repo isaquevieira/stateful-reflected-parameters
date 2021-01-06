@@ -18,5 +18,6 @@ For more information about the build: [link](https://mkyong.com/gradle/gradle-cr
 
 # How does it work?
 
-1- Analyze Http responses, registering the returned json values in memory (but, process only responses from Proxy).
-2- Look for refections in the following HttpRequests
+1- Analyze In Scope Http responses, registering the returned json values in memory (but, process only responses from Proxy).
+2- Look for refections in the following In Scope HttpRequests
+  2.1 - Here, we consider values in header and body.

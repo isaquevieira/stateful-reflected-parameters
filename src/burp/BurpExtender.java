@@ -43,7 +43,10 @@ public class BurpExtender extends AbstractTableModel implements IBurpExtender, I
     private final List<ReflectedEntry> reflectedEntryList = new ArrayList<>();
     private IHttpRequestResponse currentlyDisplayedItem;
     private PrintWriter stdout;
+    //TODO: Remove historicOfRequests
     Map<IHttpRequestResponse, List<String>> historicOfRequests = new HashMap<IHttpRequestResponse, List<String>>();
+    
+    Map<IHttpRequestResponse, HashMap<String, String>> historicOfRequestsMap = new HashMap<IHttpRequestResponse, HashMap<String, String>>();
     
     // Right click menu elements
     private JMenuItem menuItemScannerAll;
@@ -198,6 +201,8 @@ public class BurpExtender extends AbstractTableModel implements IBurpExtender, I
      // ref: https://stackoverflow.com/a/24372548
  	 // ref: https://stackoverflow.com/a/30709527/13912378
     // Extract the values from a JSON object
+    //TODO: remove
+    // Nao foi removido ainda pq pode ser útil para referencia
  	 public static List<String> printJSONObject(JSONObject resobj ) {
  		 List<String> values = new ArrayList<String>();
  		 for(Iterator iterator = resobj.keySet().iterator(); iterator.hasNext();) {
@@ -211,7 +216,37 @@ public class BurpExtender extends AbstractTableModel implements IBurpExtender, I
  		 }
  		 return values;
  	 }
+ 	 
+ 	 public static HashMap<String, String> mapJSONObject(JSONObject resobj ) {
+ 		 HashMap<String, String> map = new HashMap<String, String>();
+ 		 for(Iterator iterator = resobj.keySet().iterator(); iterator.hasNext();) {
+ 			 String key = (String) iterator.next();
+ 			 if ( resobj.get(key) instanceof JSONObject ) {
+ 				 JSONObject child = new JSONObject(resobj.get(key).toString());
+ 				 map.putAll(mapJSONObject(child));
+ 			 } else {
+ 				 map.put(key, (String) resobj.get(key).toString());
+ 			 }
+ 		 }
+ 		 return map;
+ 	 }
+ 	 
+ 	 public static boolean checkIfHistoricOfRequestsMapContainsValues(
+ 			 Map<IHttpRequestResponse, HashMap<String, String>> historicOfRequestsMap,
+ 			 String value) {
+ 		 for (IHttpRequestResponse out : historicOfRequestsMap.keySet()) {
+ 			 if (historicOfRequestsMap.get(out).containsValue(value))
+ 				 return true;
+ 		 }
+ 		 return false;
+ 	 }
     
+ 	//TODO: Currently, we can have multiple requests to the same endpoint, with the same response
+ 	// We'd like to avoid this scenario
+ 	// Example:
+// 	Current historicOfRequestsMap state:
+// 		Id:id123
+// 		Id:id123
  	// Analyze Http responses, registering json values in memory
  	public void analyzeHttpResponse(int toolFlag, boolean messageIsRequest, IHttpRequestResponse messageInfo) {
  	// Process only responses from Proxy
@@ -221,19 +256,27 @@ public class BurpExtender extends AbstractTableModel implements IBurpExtender, I
             {
             	IResponseInfo iResponse = helpers.analyzeResponse(messageInfo.getResponse());
             	if (iResponse.getInferredMimeType() == "JSON") {
+            		stdout.println("Analyzing HttpResponse");
         			try {
         				String response = new String(messageInfo.getResponse());
         				int bodyOffset = iResponse.getBodyOffset();
         				String responseBody = response.substring(bodyOffset);
                 	   	stdout.println(responseBody);
         				JSONObject resobj = new JSONObject(responseBody);
-        				//JSONObject resobj = new JSONObject(response);
-        				List<String> values = printJSONObject(resobj);
-        				 for (String out:values) {
-        				 	 stdout.println(out);
-        				 }
-         				historicOfRequests.put(messageInfo, values);
+        				HashMap<String, String> map = mapJSONObject(resobj);
+         				historicOfRequestsMap.put(messageInfo, map);
+         				for (String out : map.keySet()) {
+        					stdout.println(out + ":" + map.get(out));
+        				}
+         				
+         				stdout.println("Current historicOfRequestsMap state:");
+         				for (IHttpRequestResponse out : historicOfRequestsMap.keySet()) {
+         					for (String mapOut : historicOfRequestsMap.get(out).keySet()) {
+         						stdout.println(mapOut + ":" + historicOfRequestsMap.get(out).get(mapOut));
+         					}
+        				}
          				// Teste de adicao de linha na tabela
+         				// TODO: make improvements
 //         				synchronized(reflectedEntryList)
 //                        {
 //                            int row = reflectedEntryList.size();
@@ -260,6 +303,8 @@ public class BurpExtender extends AbstractTableModel implements IBurpExtender, I
         	URL url = helpers.analyzeRequest(messageInfo).getUrl();
             if (callbacks.isInScope(url))
             {
+            	stdout.println("Analyzing HttpRequest");
+            	
             	IRequestInfo iRequest = helpers.analyzeRequest(messageInfo.getRequest());
             	stdout.println("callbacks.isInScope");
             	IHttpRequestResponseWithMarkers messageInfoMarked = callbacks.applyMarkers(messageInfo, null, null);
@@ -269,10 +314,12 @@ public class BurpExtender extends AbstractTableModel implements IBurpExtender, I
         		List<String> reflectedValues = new ArrayList<String>();
             	//stdout.println(request);
         		
+        		stdout.println("Listing params");
                 for (IParameter param: params)
                 {
                 	stdout.println(param.getValue());
-                    if (historicOfRequests.containsValue(param.getValue())) {
+                	if (checkIfHistoricOfRequestsMapContainsValues(historicOfRequestsMap, param.getValue())) {
+                		stdout.println("Reflected Value found: " + param.getValue());
                     	reflectedValues.add(param.getValue());
                     	requestMarkers.add(new int[] {param.getValueStart(),param.getValueEnd()});
                     	messageInfoMarked = callbacks.applyMarkers(messageInfo, requestMarkers, null);
@@ -280,17 +327,17 @@ public class BurpExtender extends AbstractTableModel implements IBurpExtender, I
                     }
                 }
                 
-                //TODO: scan url
-                String pathParts[] = url.getPath().split("/");
-                for (String pathPart: pathParts) {
-                	for(Map.Entry<IHttpRequestResponse, List<String>> entry : historicOfRequests.entrySet()) {
-                	    if (entry.getValue().contains(pathPart)) {
-                    		stdout.println("* "+url.getPath() + "\t" + pathPart);                	    	
-                	    }
-                	}
-                }
-                
-                // TODO: scan headers
+//                //TODO: scan url
+//                String pathParts[] = url.getPath().split("/");
+//                for (String pathPart: pathParts) {
+//                	for(Map.Entry<IHttpRequestResponse, List<String>> entry : historicOfRequests.entrySet()) {
+//                	    if (entry.getValue().contains(pathPart)) {
+//                    		stdout.println("* "+url.getPath() + "\t" + pathPart);                	    	
+//                	    }
+//                	}
+//                }
+//                
+//                // TODO: scan headers
 //                List<String> headers = iRequest.getHeaders();
 //                for (String header: headers) {
 //                	stdout.println(header);
@@ -325,7 +372,7 @@ public class BurpExtender extends AbstractTableModel implements IBurpExtender, I
         		|| toolFlag == IBurpExtenderCallbacks.TOOL_REPEATER))
         {
             if (callbacks.isInScope(helpers.analyzeRequest(messageInfo).getUrl()))
-            {            	
+            {
                 IHttpRequestResponseWithMarkers messageInfoMarked = callbacks.applyMarkers(messageInfo, null, null);
                 List<IParameter> params = helpers.analyzeRequest(messageInfo).getParameters();
                 String response = new String(messageInfo.getResponse());
