@@ -44,7 +44,7 @@ public class BurpExtender extends AbstractTableModel implements IBurpExtender, I
     //TODO: Remove historicOfRequests
     Map<IHttpRequestResponse, List<String>> historicOfRequests = new HashMap<IHttpRequestResponse, List<String>>();
     
-    Map<IHttpRequestResponse, HashMap<String, String>> historicOfRequestsMap = new HashMap<IHttpRequestResponse, HashMap<String, String>>();
+    Map<IHttpRequestResponse, JSONObject> historicOfRequestsMap = new HashMap<IHttpRequestResponse, JSONObject>();
     
     // Right click menu elements
     private JMenuItem menuItemScannerAll;
@@ -229,12 +229,32 @@ public class BurpExtender extends AbstractTableModel implements IBurpExtender, I
  		 return map;
  	 }
  	 
+ 	 
+ 	public static boolean checkIfAValueExistsInJSONObject(JSONObject jsonObject, String value) {
+ 		for(Iterator iterator = jsonObject.keySet().iterator(); iterator.hasNext();) {
+			 String key = (String) iterator.next();
+			 if (jsonObject.get(key) instanceof JSONObject ) {
+				 JSONObject child = new JSONObject(jsonObject.get(key).toString());
+				 return checkIfAValueExistsInJSONObject(child, value);
+			 } else {
+				 if (value.equals(jsonObject.get(key).toString())){
+					 return true;
+				 } else {
+					 return false;
+				 }
+			 }
+		 }
+		 return false;
+	 }
+ 	
+ 	 
  	 public static boolean checkIfHistoricOfRequestsMapContainsValues(
- 			 Map<IHttpRequestResponse, HashMap<String, String>> historicOfRequestsMap,
+ 			 Map<IHttpRequestResponse, JSONObject> historicOfRequestsMap,
  			 String value) {
  		 for (IHttpRequestResponse out : historicOfRequestsMap.keySet()) {
- 			 if (historicOfRequestsMap.get(out).containsValue(value))
- 				 return true;
+ 			if (checkIfAValueExistsInJSONObject(historicOfRequestsMap.get(out), value)) {
+ 				return true;
+ 			}
  		 }
  		 return false;
  	 }
@@ -246,35 +266,38 @@ public class BurpExtender extends AbstractTableModel implements IBurpExtender, I
 // 		Id:id123
 // 		Id:id123
  	// Analyze Http responses, registering json values in memory
- 	public void analyzeHttpResponse(int toolFlag, boolean messageIsRequest, IHttpRequestResponse messageInfo) {
- 	// Process only responses from Proxy
-        if (!messageIsRequest && (toolFlag == IBurpExtenderCallbacks.TOOL_PROXY))
-        {
-            if (callbacks.isInScope(helpers.analyzeRequest(messageInfo).getUrl()))
-            {
-            	IResponseInfo iResponse = helpers.analyzeResponse(messageInfo.getResponse());
-            	if (iResponse.getInferredMimeType() == "JSON") {
-            		stdout.println("Analyzing HttpResponse");
-        			try {
-        				String response = new String(messageInfo.getResponse());
-        				int bodyOffset = iResponse.getBodyOffset();
-        				String responseBody = response.substring(bodyOffset);
-                	   	stdout.println(responseBody);
-        				JSONObject resobj = new JSONObject(responseBody);
-        				HashMap<String, String> map = mapJSONObject(resobj);
-         				historicOfRequestsMap.put(messageInfo, map);
-         				for (String out : map.keySet()) {
-        					stdout.println(out + ":" + map.get(out));
-        				}
-         				
-         				stdout.println("Current historicOfRequestsMap state:");
-         				for (IHttpRequestResponse out : historicOfRequestsMap.keySet()) {
-         					for (String mapOut : historicOfRequestsMap.get(out).keySet()) {
-         						stdout.println(mapOut + ":" + historicOfRequestsMap.get(out).get(mapOut));
-         					}
-        				}
-         				// Teste de adicao de linha na tabela
-         				// TODO: make improvements
+	public void analyzeHttpResponse(int toolFlag, boolean messageIsRequest, IHttpRequestResponse messageInfo) {
+		// Process only responses from Proxy or Repeater
+		if (!messageIsRequest && (toolFlag == IBurpExtenderCallbacks.TOOL_PROXY
+				|| toolFlag == IBurpExtenderCallbacks.TOOL_REPEATER)) {
+			// Check if it is in scope
+			if (callbacks.isInScope(helpers.analyzeRequest(messageInfo).getUrl())) {
+				IResponseInfo iResponse = helpers.analyzeResponse(messageInfo.getResponse());
+				// Verify if the request is JSON
+				if (iResponse.getInferredMimeType() == "JSON") {
+					stdout.println("Analyzing HttpResponse");
+					try {
+						String response = new String(messageInfo.getResponse());
+						int bodyOffset = iResponse.getBodyOffset();
+						String responseBody = response.substring(bodyOffset);
+						
+						stdout.println("responseBody: " + responseBody);
+						JSONObject resobj = new JSONObject(responseBody);
+						historicOfRequestsMap.put(messageInfo, resobj);
+						
+						stdout.println("Current JSONObject:");
+						for (String out : printJSONObject(resobj)) {
+							stdout.println(out);
+						}
+
+						stdout.println("Current historicOfRequestsMap state:");
+						for (IHttpRequestResponse out : historicOfRequestsMap.keySet()) {
+							for (String mapOut : historicOfRequestsMap.get(out).keySet()) {
+								stdout.println(mapOut + ":" + historicOfRequestsMap.get(out).get(mapOut));
+							}
+						}
+						// Teste de adicao de linha na tabela
+						// TODO: make improvements
 //         				synchronized(reflectedEntryList)
 //                        {
 //                            int row = reflectedEntryList.size();
@@ -282,19 +305,19 @@ public class BurpExtender extends AbstractTableModel implements IBurpExtender, I
 //                                    helpers.analyzeRequest(messageInfo).getMethod(), null, callbacks.getToolName(toolFlag)));
 //                            fireTableRowsInserted(row, row);
 //                        }
-        			} catch (Exception e) {
-        				System.out.println("Error to parser JSON");
-        				e.printStackTrace();
-        			}
-        		}   	
-            }
-        }
- 	}
+					} catch (Exception e) {
+						System.out.println("Error to parser JSON");
+						e.printStackTrace();
+					}
+				}
+			}
+		}
+	}
  	
  	
  	// Look for refection in HttpRequests
  	private void analyzeHttpRequest(int toolFlag, boolean messageIsRequest, IHttpRequestResponse messageInfo) {
- 		// Process only requests from Proxy, or Spider tool, or Repeater
+ 		// Process only requests from Proxy, or Repeater
         if (messageIsRequest && (toolFlag == IBurpExtenderCallbacks.TOOL_PROXY
         		|| toolFlag == IBurpExtenderCallbacks.TOOL_REPEATER))
         {      	
