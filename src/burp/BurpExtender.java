@@ -1,5 +1,3 @@
-// https://mkyong.com/gradle/gradle-create-a-jar-file-with-dependencies/
-
 package burp;
 
 import org.json.JSONObject;
