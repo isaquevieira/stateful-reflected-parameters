@@ -2,10 +2,10 @@
 	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
 	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
 	<modelVersion>4.0.0</modelVersion>
-	<groupId>maven-stateful-reflected-parameters</groupId>
-	<artifactId>maven-stateful-reflected-parameters</artifactId>
+	<groupId>stateful-reflected-parameters</groupId>
+	<artifactId>stateful-reflected-parameters</artifactId>
 	<version>0.0.1-SNAPSHOT</version>
-	<name>maven-stateful-reflected-parameters</name>
+	<name>stateful-reflected-parameters</name>
 
 	<dependencies>
 		<dependency>
@@ -22,7 +22,7 @@
 
 	<!-- Demanded to create the fat jar http://tutorials.jenkov.com/maven/maven-build-fat-jar.html -->
 	<build>
-		<finalName>maven-stateful-reflected-parameters</finalName>
+		<finalName>stateful-reflected-parameters</finalName>
 		<plugins>
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>
