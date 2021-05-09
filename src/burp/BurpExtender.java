@@ -1,33 +1,21 @@
 package burp;
 
 import org.json.JSONObject;
-import java.awt.Component;
-import java.net.URL;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
 
-import javax.swing.JMenuItem;
-import javax.swing.JPopupMenu;
-import javax.swing.JScrollPane;
-import javax.swing.JSplitPane;
-import javax.swing.JTabbedPane;
-import javax.swing.JTable;
-import javax.swing.SwingUtilities;
+import javax.swing.*;
 import javax.swing.table.AbstractTableModel;
-import javax.swing.table.*;
+import javax.swing.table.TableModel;
+import java.awt.*;
+import java.awt.datatransfer.Clipboard;
+import java.awt.datatransfer.StringSelection;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.io.PrintWriter;
+import java.net.URL;
 import java.net.URLDecoder;
-import javax.swing.ListSelectionModel;
-import java.io.UnsupportedEncodingException;
-import javax.swing.JSeparator;
-import java.awt.datatransfer.*;
-import java.awt.Toolkit;
+import java.nio.charset.StandardCharsets;
+import java.util.List;
+import java.util.*;
 
 public class BurpExtender extends AbstractTableModel implements IBurpExtender, ITab, IHttpListener, IMessageEditorController
 {
@@ -41,10 +29,8 @@ public class BurpExtender extends AbstractTableModel implements IBurpExtender, I
     private final List<ReflectedEntry> reflectedEntryList = new ArrayList<>();
     private IHttpRequestResponse currentlyDisplayedItem;
     private PrintWriter stdout;
-    //TODO: Remove historicOfRequests
-    Map<IHttpRequestResponse, List<String>> historicOfRequests = new HashMap<IHttpRequestResponse, List<String>>();
-    
-    Map<IHttpRequestResponse, JSONObject> historicOfRequestsMap = new HashMap<IHttpRequestResponse, JSONObject>();
+
+    Map<IHttpRequestResponse, JSONObject> historicOfRequestsMap = new HashMap<>();
     
     // Right click menu elements
     private JMenuItem menuItemScannerAll;
@@ -77,105 +63,99 @@ public class BurpExtender extends AbstractTableModel implements IBurpExtender, I
         stdout = new PrintWriter(callbacks.getStdout(), true);
         
         // create our UI
-        SwingUtilities.invokeLater(new Runnable() 
-        {
-            @Override
-            public void run()
-            {
-                // Main split pane
-                splitPane = new JSplitPane(JSplitPane.VERTICAL_SPLIT);
-                splitPane.setResizeWeight(0.4f);
-                splitPane2 = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT);
-                splitPane2.setResizeWeight(0.35f);
-                
-                // Table of reflected entries
-                ReflectedTable requestTable = new ReflectedTable(BurpExtender.this);
-                ParametersTableModel parametersTableModel = new ParametersTableModel();
-                
-                parametersTable = new ParametersTable(parametersTableModel);
-                parametersTable.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
-                
-                
-                // Setting the colums width
-                requestTable.setAutoResizeMode(JTable.AUTO_RESIZE_OFF);
-                requestTable.getColumnModel().getColumn(0).setPreferredWidth(30);
-                requestTable.getColumnModel().getColumn(1).setPreferredWidth(300);
-                requestTable.getColumnModel().getColumn(2).setPreferredWidth(80);
-                requestTable.getColumnModel().getColumn(3).setPreferredWidth(500);
-                requestTable.getColumnModel().getColumn(4).setPreferredWidth(80);
-                requestTable.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
-                
-                
-                
-                // Creating popup menu
-                JPopupMenu popupMenu = new JPopupMenu();
-                menuItemScannerAll = new JMenuItem("Active scan whole request");
-                menuItemScannerParameters = new JMenuItem("Active scan reflected parameters");
-                menuItemIntruder = new JMenuItem("Send request to Intruder");
-                menuItemRepeater = new JMenuItem("Send request to Repeater");
-                menuItemCopyURL = new JMenuItem("Copy URL");
-                menuItemDeleteItem = new JMenuItem("Delete item");
-                menuItemClearList = new JMenuItem("Clear list");
-                
-               
-                menuItemScannerAll.addActionListener(requestTable);
-                menuItemScannerParameters.addActionListener(requestTable);
-                menuItemIntruder.addActionListener(requestTable);
-                menuItemRepeater.addActionListener(requestTable);
-                menuItemCopyURL.addActionListener(requestTable);
-                menuItemDeleteItem.addActionListener(requestTable);
-                menuItemClearList.addActionListener(requestTable);
-                
-                popupMenu.add(menuItemScannerAll);
-                popupMenu.add(menuItemScannerParameters);
-                popupMenu.add(menuItemIntruder);
-                popupMenu.add(menuItemRepeater);
-                popupMenu.add(new JSeparator());
-                popupMenu.add(menuItemCopyURL);
-                popupMenu.add(menuItemDeleteItem);
-                popupMenu.add(new JSeparator());
-                popupMenu.add(menuItemClearList);
-                
-                requestTable.setComponentPopupMenu(popupMenu);
-                
-                JScrollPane scrollPane = new JScrollPane(requestTable);
-                JScrollPane scrollPane2 = new JScrollPane(parametersTable);
-                
-                splitPane.setLeftComponent(scrollPane);
-                splitPane2.setLeftComponent(scrollPane2);
-                
-                // Tabs with request/response viewers
-                JTabbedPane tabs = new JTabbedPane();
-                requestViewer = callbacks.createMessageEditor(BurpExtender.this, false);
-                responseViewer = callbacks.createMessageEditor(BurpExtender.this, false);
-                tabs.addTab("Request", requestViewer.getComponent());
-                tabs.addTab("Response", responseViewer.getComponent());
-                
-                splitPane.setRightComponent(splitPane2);
-                splitPane2.setRightComponent(tabs);
-                splitPane.setDividerLocation(0.5);
-                splitPane2.setDividerLocation(0.3);
+        SwingUtilities.invokeLater(() -> {
+            // Main split pane
+            splitPane = new JSplitPane(JSplitPane.VERTICAL_SPLIT);
+            splitPane.setResizeWeight(0.4f);
+            splitPane2 = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT);
+            splitPane2.setResizeWeight(0.35f);
 
-                // Customize our UI components
-                callbacks.customizeUiComponent(splitPane);
-                callbacks.customizeUiComponent(splitPane2);
-                callbacks.customizeUiComponent(requestTable);
-                callbacks.customizeUiComponent(parametersTable);
-                callbacks.customizeUiComponent(scrollPane);
-                callbacks.customizeUiComponent(scrollPane2);
-                callbacks.customizeUiComponent(tabs);
-                
-                
-                // add the custom tab to Burp's UI
-                callbacks.addSuiteTab(BurpExtender.this);
-                
-                // register ourselves as an HTTP listener
-                callbacks.registerHttpListener(BurpExtender.this); 
-                
-                stdout.println("Stateful Reflection plugin v0.01");
-                stdout.println("Author: ASSF");
-                stdout.println("Source: https://github.com/ailton07/stateful-reflected-parameters");
-            }
+            // Table of reflected entries
+            ReflectedTable requestTable = new ReflectedTable(BurpExtender.this);
+            ParametersTableModel parametersTableModel = new ParametersTableModel();
+
+            parametersTable = new ParametersTable(parametersTableModel);
+            parametersTable.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+
+
+            // Setting the colums width
+            requestTable.setAutoResizeMode(JTable.AUTO_RESIZE_OFF);
+            requestTable.getColumnModel().getColumn(0).setPreferredWidth(30);
+            requestTable.getColumnModel().getColumn(1).setPreferredWidth(300);
+            requestTable.getColumnModel().getColumn(2).setPreferredWidth(80);
+            requestTable.getColumnModel().getColumn(3).setPreferredWidth(500);
+            requestTable.getColumnModel().getColumn(4).setPreferredWidth(80);
+            requestTable.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+
+
+            // Creating popup menu
+            JPopupMenu popupMenu = new JPopupMenu();
+            menuItemScannerAll = new JMenuItem("Active scan whole request");
+            menuItemScannerParameters = new JMenuItem("Active scan reflected parameters");
+            menuItemIntruder = new JMenuItem("Send request to Intruder");
+            menuItemRepeater = new JMenuItem("Send request to Repeater");
+            menuItemCopyURL = new JMenuItem("Copy URL");
+            menuItemDeleteItem = new JMenuItem("Delete item");
+            menuItemClearList = new JMenuItem("Clear list");
+
+
+            menuItemScannerAll.addActionListener(requestTable);
+            menuItemScannerParameters.addActionListener(requestTable);
+            menuItemIntruder.addActionListener(requestTable);
+            menuItemRepeater.addActionListener(requestTable);
+            menuItemCopyURL.addActionListener(requestTable);
+            menuItemDeleteItem.addActionListener(requestTable);
+            menuItemClearList.addActionListener(requestTable);
+
+            popupMenu.add(menuItemScannerAll);
+            popupMenu.add(menuItemScannerParameters);
+            popupMenu.add(menuItemIntruder);
+            popupMenu.add(menuItemRepeater);
+            popupMenu.add(new JSeparator());
+            popupMenu.add(menuItemCopyURL);
+            popupMenu.add(menuItemDeleteItem);
+            popupMenu.add(new JSeparator());
+            popupMenu.add(menuItemClearList);
+
+            requestTable.setComponentPopupMenu(popupMenu);
+
+            JScrollPane scrollPane = new JScrollPane(requestTable);
+            JScrollPane scrollPane2 = new JScrollPane(parametersTable);
+
+            splitPane.setLeftComponent(scrollPane);
+            splitPane2.setLeftComponent(scrollPane2);
+
+            // Tabs with request/response viewers
+            JTabbedPane tabs = new JTabbedPane();
+            requestViewer = callbacks.createMessageEditor(BurpExtender.this, false);
+            responseViewer = callbacks.createMessageEditor(BurpExtender.this, false);
+            tabs.addTab("Request", requestViewer.getComponent());
+            tabs.addTab("Response", responseViewer.getComponent());
+
+            splitPane.setRightComponent(splitPane2);
+            splitPane2.setRightComponent(tabs);
+            splitPane.setDividerLocation(0.5);
+            splitPane2.setDividerLocation(0.3);
+
+            // Customize our UI components
+            callbacks.customizeUiComponent(splitPane);
+            callbacks.customizeUiComponent(splitPane2);
+            callbacks.customizeUiComponent(requestTable);
+            callbacks.customizeUiComponent(parametersTable);
+            callbacks.customizeUiComponent(scrollPane);
+            callbacks.customizeUiComponent(scrollPane2);
+            callbacks.customizeUiComponent(tabs);
+
+
+            // add the custom tab to Burp's UI
+            callbacks.addSuiteTab(BurpExtender.this);
+
+            // register ourselves as an HTTP listener
+            callbacks.registerHttpListener(BurpExtender.this);
+
+            stdout.println("Stateful Reflection plugin v0.01");
+            stdout.println("Author: ASSF");
+            stdout.println("Source: https://github.com/ailton07/stateful-reflected-parameters");
         });
 
     }
@@ -202,48 +182,41 @@ public class BurpExtender extends AbstractTableModel implements IBurpExtender, I
     //TODO: remove
     // Nao foi removido ainda pq pode ser útil para referencia
  	 public static List<String> printJSONObject(JSONObject resobj ) {
- 		 List<String> values = new ArrayList<String>();
- 		 for(Iterator iterator = resobj.keySet().iterator(); iterator.hasNext();) {
- 			 String key = (String) iterator.next();
- 			 if ( resobj.get(key) instanceof JSONObject ) {
- 				 JSONObject child = new JSONObject(resobj.get(key).toString());
- 				 values.addAll(printJSONObject(child));
- 			 } else {
- 				 values.add((String) resobj.get(key).toString());
- 			 }
- 		 }
+ 		 List<String> values = new ArrayList<>();
+         for (String key : resobj.keySet()) {
+             if (resobj.get(key) instanceof JSONObject) {
+                 JSONObject child = new JSONObject(resobj.get(key).toString());
+                 values.addAll(printJSONObject(child));
+             } else {
+                 values.add(resobj.get(key).toString());
+             }
+         }
  		 return values;
  	 }
  	 
  	 public static HashMap<String, String> mapJSONObject(JSONObject resobj ) {
- 		 HashMap<String, String> map = new HashMap<String, String>();
- 		 for(Iterator iterator = resobj.keySet().iterator(); iterator.hasNext();) {
- 			 String key = (String) iterator.next();
- 			 if ( resobj.get(key) instanceof JSONObject ) {
- 				 JSONObject child = new JSONObject(resobj.get(key).toString());
- 				 map.putAll(mapJSONObject(child));
- 			 } else {
- 				 map.put(key, (String) resobj.get(key).toString());
- 			 }
- 		 }
+ 		 HashMap<String, String> map = new HashMap<>();
+         for (String key : resobj.keySet()) {
+             if (resobj.get(key) instanceof JSONObject) {
+                 JSONObject child = new JSONObject(resobj.get(key).toString());
+                 map.putAll(mapJSONObject(child));
+             } else {
+                 map.put(key, resobj.get(key).toString());
+             }
+         }
  		 return map;
  	 }
  	 
  	 
  	public static boolean checkIfAValueExistsInJSONObject(JSONObject jsonObject, String value) {
- 		for(Iterator iterator = jsonObject.keySet().iterator(); iterator.hasNext();) {
-			 String key = (String) iterator.next();
-			 if (jsonObject.get(key) instanceof JSONObject ) {
-				 JSONObject child = new JSONObject(jsonObject.get(key).toString());
-				 return checkIfAValueExistsInJSONObject(child, value);
-			 } else {
-				 if (value.equals(jsonObject.get(key).toString())){
-					 return true;
-				 } else {
-					 return false;
-				 }
-			 }
-		 }
+        for (String key : jsonObject.keySet()) {
+            if (jsonObject.get(key) instanceof JSONObject) {
+                JSONObject child = new JSONObject(jsonObject.get(key).toString());
+                return checkIfAValueExistsInJSONObject(child, value);
+            } else {
+                return value.equals(jsonObject.get(key).toString());
+            }
+        }
 		 return false;
 	 }
  	
@@ -274,7 +247,7 @@ public class BurpExtender extends AbstractTableModel implements IBurpExtender, I
 			if (callbacks.isInScope(helpers.analyzeRequest(messageInfo).getUrl())) {
 				IResponseInfo iResponse = helpers.analyzeResponse(messageInfo.getResponse());
 				// Verify if the request is JSON
-				if (iResponse.getInferredMimeType() == "JSON") {
+				if (iResponse.getInferredMimeType().equals("JSON")) {
 					stdout.println("Analyzing HttpResponse");
 					try {
 						String response = new String(messageInfo.getResponse());
@@ -332,7 +305,7 @@ public class BurpExtender extends AbstractTableModel implements IBurpExtender, I
                 List<int[]> requestMarkers = new ArrayList<>();
                 List<IParameter> params = iRequest.getParameters();
                 List<String[]> parameters = new ArrayList<>();
-        		List<String> reflectedValues = new ArrayList<String>();
+        		List<String> reflectedValues = new ArrayList<>();
             	//stdout.println(request);
         		
         		stdout.println("Listing params");
@@ -429,32 +402,27 @@ public class BurpExtender extends AbstractTableModel implements IBurpExtender, I
                         if (foundReflection)
                             reflectedValues = param.getValue();
                         foundReflection = false;
-                        try
+                        if (!param.getValue().equals(URLDecoder.decode(param.getValue(), StandardCharsets.UTF_8)))
                         {
-                            if (!param.getValue().equals(URLDecoder.decode(param.getValue(), "UTF-8")))
+                            paramValueDecoded = URLDecoder.decode(param.getValue(), StandardCharsets.UTF_8);
+                            while (response.indexOf(paramValueDecoded, lastpos) != -1)
                             {
-                                paramValueDecoded = URLDecoder.decode(param.getValue(), "UTF-8");
-                                while (response.indexOf(paramValueDecoded, lastpos) != -1)
-                                {
-                                    foundReflection = true;
-                                    lastpos = response.indexOf(paramValueDecoded, lastpos);
-                            
-                                    // Marking value in the response
-                                    responseMarkers.add(new int[] {lastpos,lastpos + paramValueDecoded.length()});
-                                    lastpos += 1;
-                                }
+                                foundReflection = true;
+                                lastpos = response.indexOf(paramValueDecoded, lastpos);
+
+                                // Marking value in the response
+                                responseMarkers.add(new int[] {lastpos,lastpos + paramValueDecoded.length()});
+                                lastpos += 1;
                             }
-                            if (foundReflection)
-                            {
-                                if (reflectedValues.equals(""))
-                                    reflectedValues = paramValueDecoded;
-                                else
-                                   reflectedValues = " , " + reflectedValues;
-                            }    
-                        }catch(UnsupportedEncodingException e){
-                            stdout.println(e); 
                         }
-                        
+                        if (foundReflection)
+                        {
+                            if (reflectedValues.equals(""))
+                                reflectedValues = paramValueDecoded;
+                            else
+                               reflectedValues = " , " + reflectedValues;
+                        }
+
                         if (!reflectedValues.equals(""))
                         {
                             // Marking param value in the request
@@ -499,21 +467,14 @@ public class BurpExtender extends AbstractTableModel implements IBurpExtender, I
     @Override
     public String getColumnName(int columnIndex)
     {
-        switch (columnIndex)
-        {
-            case 0:
-                return "#";
-            case 1:
-                return "Host";
-            case 2:
-                return "Method";
-            case 3:
-                return "URL";
-            case 4:
-                return "Tool";
-            default:
-                return "";
-        }
+        return switch (columnIndex) {
+            case 0 -> "#";
+            case 1 -> "Host";
+            case 2 -> "Method";
+            case 3 -> "URL";
+            case 4 -> "Tool";
+            default -> "";
+        };
     }
 
     @Override
@@ -527,21 +488,14 @@ public class BurpExtender extends AbstractTableModel implements IBurpExtender, I
     {
         ReflectedEntry reflectedEntry = reflectedEntryList.get(rowIndex);
 
-        switch (columnIndex)
-        {
-            case 0:
-                return Integer.toString(rowIndex+1);
-            case 1:
-                return (reflectedEntry.url.getProtocol() + "://" + reflectedEntry.url.getHost());
-            case 2:
-                return reflectedEntry.method;
-            case 3:
-                return reflectedEntry.url.getFile();
-            case 4:
-                return reflectedEntry.tool;
-            default:
-                return "";
-        }
+        return switch (columnIndex) {
+            case 0 -> Integer.toString(rowIndex + 1);
+            case 1 -> (reflectedEntry.url.getProtocol() + "://" + reflectedEntry.url.getHost());
+            case 2 -> reflectedEntry.method;
+            case 3 -> reflectedEntry.url.getFile();
+            case 4 -> reflectedEntry.tool;
+            default -> "";
+        };
     }
 
     //
@@ -590,7 +544,7 @@ public class BurpExtender extends AbstractTableModel implements IBurpExtender, I
                 return;
             ReflectedEntry reflectedEntry = reflectedEntryList.get(row);
             boolean useHttps = false;
-            if (reflectedEntry.url.getProtocol().toLowerCase().equals("https"))
+            if (reflectedEntry.url.getProtocol().equalsIgnoreCase("https"))
                 useHttps = true;
             if (menu == menuItemScannerAll) 
             {
@@ -702,17 +656,12 @@ public class BurpExtender extends AbstractTableModel implements IBurpExtender, I
         @Override
         public String getColumnName(int columnIndex)
         {
-            switch (columnIndex)
-            {
-                case 0:
-                    return "Parameter name";
-                case 1:
-                    return "Parameter value";
-                case 2:
-                    return "Reflected value";
-                default:
-                    return "";
-            }
+            return switch (columnIndex) {
+                case 0 -> "Parameter name";
+                case 1 -> "Parameter value";
+                case 2 -> "Reflected value";
+                default -> "";
+            };
         }
         @Override
         public Class<?> getColumnClass(int columnIndex)
@@ -723,8 +672,8 @@ public class BurpExtender extends AbstractTableModel implements IBurpExtender, I
     
     private class ParametersTable extends JTable implements ActionListener
     {
-        private JPopupMenu popupMenu;
-        private JMenuItem menuItemScannerParameter;
+        private final JPopupMenu popupMenu;
+        private final JMenuItem menuItemScannerParameter;
         
         public ParametersTable(TableModel tableModel)
         {
@@ -752,7 +701,7 @@ public class BurpExtender extends AbstractTableModel implements IBurpExtender, I
             List<int[]> param = new ArrayList<> ();
             param.add(reflectedEntry.requestResponse.getRequestMarkers().get(row));
             callbacks.doActiveScan(reflectedEntry.url.getHost(), reflectedEntry.url.getPort(), 
-                    reflectedEntry.url.getProtocol().toLowerCase().equals("https"), reflectedEntry.requestResponse.getRequest(), param);
+                    reflectedEntry.url.getProtocol().equalsIgnoreCase("https"), reflectedEntry.requestResponse.getRequest(), param);
         }
     }
     
