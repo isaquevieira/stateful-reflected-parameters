@@ -1,7 +1,5 @@
 package burp;
 
-import org.json.JSONObject;
-
 import javax.swing.*;
 import javax.swing.table.AbstractTableModel;
 import javax.swing.table.TableModel;
@@ -11,27 +9,21 @@ import java.awt.datatransfer.StringSelection;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.io.PrintWriter;
-import java.net.URL;
-import java.net.URLDecoder;
-import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.List;
-import java.util.*;
 
-public class BurpExtender extends AbstractTableModel implements IBurpExtender, ITab, IHttpListener, IMessageEditorController
-{
+public class BurpExtender extends AbstractTableModel implements IBurpExtender, ITab, IHttpListener, IMessageEditorController {
+    private final List<ReflectedEntry> reflectedEntryList = new ArrayList<>();
+    private ReflectionAnalyzer analyzer;
+    private PrintWriter stdout;
     private IBurpExtenderCallbacks callbacks;
-    private IExtensionHelpers helpers;
     private JSplitPane splitPane;
     private JSplitPane splitPane2;
     private IMessageEditor requestViewer;
     private IMessageEditor responseViewer;
     private ParametersTable parametersTable;
-    private final List<ReflectedEntry> reflectedEntryList = new ArrayList<>();
     private IHttpRequestResponse currentlyDisplayedItem;
-    private PrintWriter stdout;
 
-    Map<IHttpRequestResponse, JSONObject> historicOfRequestsMap = new HashMap<>();
-    
     // Right click menu elements
     private JMenuItem menuItemScannerAll;
     private JMenuItem menuItemScannerParameters;
@@ -41,27 +33,20 @@ public class BurpExtender extends AbstractTableModel implements IBurpExtender, I
     private JMenuItem menuItemDeleteItem;
     private JMenuItem menuItemClearList;
 
-    
 
-    //
-    // implement IBurpExtender
-    //
-    
     @Override
-    public void registerExtenderCallbacks(final IBurpExtenderCallbacks callbacks)
-    {
+    public void registerExtenderCallbacks(final IBurpExtenderCallbacks callbacks) {
         // keep a reference to our callbacks object
         this.callbacks = callbacks;
-        
-        // obtain an extension helpers object
-        helpers = callbacks.getHelpers();
-        
+
+        this.analyzer = new ReflectionAnalyzer(callbacks);
+
         // set our extension name
         callbacks.setExtensionName("Stateful Reflection v0.01");
-        
+
         // obtain our output and error streams
         stdout = new PrintWriter(callbacks.getStdout(), true);
-        
+
         // create our UI
         SwingUtilities.invokeLater(() -> {
             // Main split pane
@@ -78,7 +63,7 @@ public class BurpExtender extends AbstractTableModel implements IBurpExtender, I
             parametersTable.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
 
 
-            // Setting the colums width
+            // Setting the columns width
             requestTable.setAutoResizeMode(JTable.AUTO_RESIZE_OFF);
             requestTable.getColumnModel().getColumn(0).setPreferredWidth(30);
             requestTable.getColumnModel().getColumn(1).setPreferredWidth(300);
@@ -160,313 +145,48 @@ public class BurpExtender extends AbstractTableModel implements IBurpExtender, I
 
     }
 
-    //
-    // implement ITab
-    //
-
     @Override
-    public String getTabCaption()
-    {
+    public String getTabCaption() {
         return "Stateful Reflection";
     }
 
     @Override
-    public Component getUiComponent()
-    {
+    public Component getUiComponent() {
         return splitPane;
     }
 
-     // ref: https://stackoverflow.com/a/24372548
- 	 // ref: https://stackoverflow.com/a/30709527/13912378
-    // Extract the values from a JSON object
-    //TODO: remove
-    // Nao foi removido ainda pq pode ser útil para referencia
- 	 public static List<String> printJSONObject(JSONObject resobj ) {
- 		 List<String> values = new ArrayList<>();
-         for (String key : resobj.keySet()) {
-             if (resobj.get(key) instanceof JSONObject) {
-                 JSONObject child = new JSONObject(resobj.get(key).toString());
-                 values.addAll(printJSONObject(child));
-             } else {
-                 values.add(resobj.get(key).toString());
-             }
-         }
- 		 return values;
- 	 }
- 	 
- 	 public static HashMap<String, String> mapJSONObject(JSONObject resobj ) {
- 		 HashMap<String, String> map = new HashMap<>();
-         for (String key : resobj.keySet()) {
-             if (resobj.get(key) instanceof JSONObject) {
-                 JSONObject child = new JSONObject(resobj.get(key).toString());
-                 map.putAll(mapJSONObject(child));
-             } else {
-                 map.put(key, resobj.get(key).toString());
-             }
-         }
- 		 return map;
- 	 }
- 	 
- 	 
- 	public static boolean checkIfAValueExistsInJSONObject(JSONObject jsonObject, String value) {
-        for (String key : jsonObject.keySet()) {
-            if (jsonObject.get(key) instanceof JSONObject) {
-                JSONObject child = new JSONObject(jsonObject.get(key).toString());
-                return checkIfAValueExistsInJSONObject(child, value);
-            } else {
-                return value.equals(jsonObject.get(key).toString());
-            }
-        }
-		 return false;
-	 }
- 	
- 	 
- 	 public static boolean checkIfHistoricOfRequestsMapContainsValues(
- 			 Map<IHttpRequestResponse, JSONObject> historicOfRequestsMap,
- 			 String value) {
- 		 for (IHttpRequestResponse out : historicOfRequestsMap.keySet()) {
- 			if (checkIfAValueExistsInJSONObject(historicOfRequestsMap.get(out), value)) {
- 				return true;
- 			}
- 		 }
- 		 return false;
- 	 }
-    
- 	//TODO: Currently, we can have multiple requests to the same endpoint, with the same response
- 	// We'd like to avoid this scenario
- 	// Example:
-// 	Current historicOfRequestsMap state:
-// 		Id:id123
-// 		Id:id123
- 	// Analyze Http responses, registering json values in memory
-	public void analyzeHttpResponse(int toolFlag, boolean messageIsRequest, IHttpRequestResponse messageInfo) {
-		// Process only responses from Proxy or Repeater
-		if (!messageIsRequest && (toolFlag == IBurpExtenderCallbacks.TOOL_PROXY
-				|| toolFlag == IBurpExtenderCallbacks.TOOL_REPEATER)) {
-			// Check if it is in scope
-			if (callbacks.isInScope(helpers.analyzeRequest(messageInfo).getUrl())) {
-				IResponseInfo iResponse = helpers.analyzeResponse(messageInfo.getResponse());
-				// Verify if the request is JSON
-				if (iResponse.getInferredMimeType().equals("JSON")) {
-					stdout.println("Analyzing HttpResponse");
-					try {
-						String response = new String(messageInfo.getResponse());
-						int bodyOffset = iResponse.getBodyOffset();
-						String responseBody = response.substring(bodyOffset);
-						
-						stdout.println("responseBody: " + responseBody);
-						JSONObject resobj = new JSONObject(responseBody);
-						historicOfRequestsMap.put(messageInfo, resobj);
-						
-						stdout.println("Current JSONObject:");
-						for (String out : printJSONObject(resobj)) {
-							stdout.println(out);
-						}
-
-						stdout.println("Current historicOfRequestsMap state:");
-						for (IHttpRequestResponse out : historicOfRequestsMap.keySet()) {
-							for (String mapOut : historicOfRequestsMap.get(out).keySet()) {
-								stdout.println(mapOut + ":" + historicOfRequestsMap.get(out).get(mapOut));
-							}
-						}
-						// Teste de adicao de linha na tabela
-						// TODO: make improvements
-//         				synchronized(reflectedEntryList)
-//                        {
-//                            int row = reflectedEntryList.size();
-//                            reflectedEntryList.add(new ReflectedEntry(callbacks.applyMarkers(messageInfo, null, null), helpers.analyzeRequest(messageInfo).getUrl(), 
-//                                    helpers.analyzeRequest(messageInfo).getMethod(), null, callbacks.getToolName(toolFlag)));
-//                            fireTableRowsInserted(row, row);
-//                        }
-					} catch (Exception e) {
-						System.out.println("Error to parser JSON");
-						e.printStackTrace();
-					}
-				}
-			}
-		}
-	}
- 	
- 	
- 	// Look for refection in HttpRequests
- 	private void analyzeHttpRequest(int toolFlag, boolean messageIsRequest, IHttpRequestResponse messageInfo) {
- 		// Process only requests from Proxy, or Repeater
-        if (messageIsRequest && (toolFlag == IBurpExtenderCallbacks.TOOL_PROXY
-        		|| toolFlag == IBurpExtenderCallbacks.TOOL_REPEATER))
-        {      	
-        	URL url = helpers.analyzeRequest(messageInfo).getUrl();
-            if (callbacks.isInScope(url))
-            {
-            	stdout.println("Analyzing HttpRequest");
-            	
-            	IRequestInfo iRequest = helpers.analyzeRequest(messageInfo.getRequest());
-            	stdout.println("callbacks.isInScope");
-            	IHttpRequestResponseWithMarkers messageInfoMarked = callbacks.applyMarkers(messageInfo, null, null);
-                List<int[]> requestMarkers = new ArrayList<>();
-                List<IParameter> params = iRequest.getParameters();
-                List<String[]> parameters = new ArrayList<>();
-        		List<String> reflectedValues = new ArrayList<>();
-            	//stdout.println(request);
-        		
-        		stdout.println("Listing params");
-                for (IParameter param: params)
-                {
-                	stdout.println(param.getValue());
-                	if (checkIfHistoricOfRequestsMapContainsValues(historicOfRequestsMap, param.getValue())) {
-                		stdout.println("Reflected Value found: " + param.getValue());
-                    	reflectedValues.add(param.getValue());
-                    	requestMarkers.add(new int[] {param.getValueStart(),param.getValueEnd()});
-                    	messageInfoMarked = callbacks.applyMarkers(messageInfo, requestMarkers, null);
-                        parameters.add(new String[]{param.getName(), param.getValue(), String.join(",", reflectedValues)});
-                    }
-                }
-                
-//                //TODO: scan url
-//                String pathParts[] = url.getPath().split("/");
-//                for (String pathPart: pathParts) {
-//                	for(Map.Entry<IHttpRequestResponse, List<String>> entry : historicOfRequests.entrySet()) {
-//                	    if (entry.getValue().contains(pathPart)) {
-//                    		stdout.println("* "+url.getPath() + "\t" + pathPart);                	    	
-//                	    }
-//                	}
-//                }
-//                
-//                // TODO: scan headers
-//                List<String> headers = iRequest.getHeaders();
-//                for (String header: headers) {
-//                	stdout.println(header);
-//                }
-                
-                if(!reflectedValues.isEmpty()) {
-                    synchronized(reflectedEntryList)
-                    {
-                        int row = reflectedEntryList.size();
-                        reflectedEntryList.add(new ReflectedEntry(messageInfoMarked, helpers.analyzeRequest(messageInfo).getUrl(), 
-                                helpers.analyzeRequest(messageInfo).getMethod(), parameters, callbacks.getToolName(toolFlag)));
-                        fireTableRowsInserted(row, row);
-                    }
-                }
-            }
-        }
-		
-	}
- 	
     //
     // implement IHttpListener
     //
     @Override
-    public void processHttpMessage(int toolFlag, boolean messageIsRequest, IHttpRequestResponse messageInfo)
-    {
-    	analyzeHttpResponse(toolFlag, messageIsRequest, messageInfo);
-    	analyzeHttpRequest(toolFlag, messageIsRequest, messageInfo);
-    	
-        // Process only responses from Proxy, or Spider tool, or Repeater
-        if (!messageIsRequest && (toolFlag == IBurpExtenderCallbacks.TOOL_SPIDER 
-        		|| toolFlag == IBurpExtenderCallbacks.TOOL_PROXY
-        		|| toolFlag == IBurpExtenderCallbacks.TOOL_REPEATER))
-        {
-            if (callbacks.isInScope(helpers.analyzeRequest(messageInfo).getUrl()))
-            {
-                IHttpRequestResponseWithMarkers messageInfoMarked = callbacks.applyMarkers(messageInfo, null, null);
-                List<IParameter> params = helpers.analyzeRequest(messageInfo).getParameters();
-                String response = new String(messageInfo.getResponse());
-                boolean foundReflection;
-                int lastpos;
-                List<int[]> requestMarkers = new ArrayList<>();
-                List<int[]> responseMarkers = new ArrayList<>();
-                List<String[]> parameters = new ArrayList<>();
-                String reflectedValues;
-                String paramValueDecoded = "";
-                
-                for (IParameter param: params)
-                {
-                    if (helpers.getRequestParameter(messageInfo.getRequest(), param.getName()).getType() == 2)
-                    {
-                        continue;
-                    }
-                    reflectedValues = "";
-                    if ((param.getValue().length() >= 4))
-                    {
-                        foundReflection = false;
-                        lastpos = 0;
-                        while (response.indexOf(param.getValue(), lastpos) != -1)
-                        {
-                            foundReflection = true;
-                            lastpos = response.indexOf(param.getValue(), lastpos);
-                            
-                            // Marking value in the response
-                            responseMarkers.add(new int[] {lastpos,lastpos + param.getValue().length()});
-                            lastpos += 1;
-
-                        }
-                        if (foundReflection)
-                            reflectedValues = param.getValue();
-                        foundReflection = false;
-                        if (!param.getValue().equals(URLDecoder.decode(param.getValue(), StandardCharsets.UTF_8)))
-                        {
-                            paramValueDecoded = URLDecoder.decode(param.getValue(), StandardCharsets.UTF_8);
-                            while (response.indexOf(paramValueDecoded, lastpos) != -1)
-                            {
-                                foundReflection = true;
-                                lastpos = response.indexOf(paramValueDecoded, lastpos);
-
-                                // Marking value in the response
-                                responseMarkers.add(new int[] {lastpos,lastpos + paramValueDecoded.length()});
-                                lastpos += 1;
-                            }
-                        }
-                        if (foundReflection)
-                        {
-                            if (reflectedValues.equals(""))
-                                reflectedValues = paramValueDecoded;
-                            else
-                               reflectedValues = " , " + reflectedValues;
-                        }
-
-                        if (!reflectedValues.equals(""))
-                        {
-                            // Marking param value in the request
-                            requestMarkers.add(new int[] {param.getValueStart(),param.getValueEnd()});
-                            messageInfoMarked = callbacks.applyMarkers(messageInfo, requestMarkers, responseMarkers);
-                            parameters.add(new String[]{param.getName(), param.getValue(), reflectedValues});
-                        }
-                    }
-          
-                }
-                // create a new log entry with the message details
-                if (parameters.size() > 0)
-                {
-                    synchronized(reflectedEntryList)
-                    {
-                        int row = reflectedEntryList.size();
-                        reflectedEntryList.add(new ReflectedEntry(messageInfoMarked, helpers.analyzeRequest(messageInfo).getUrl(), 
-                                helpers.analyzeRequest(messageInfo).getMethod(), parameters, callbacks.getToolName(toolFlag)));
-                        fireTableRowsInserted(row, row);
-                    }
-                }
+    public void processHttpMessage(int toolFlag, boolean messageIsRequest, IHttpRequestResponse messageInfo) {
+        analyzer.analyzeHttpResponse(toolFlag, messageIsRequest, messageInfo);
+        ReflectedEntry entry = analyzer.analyzeHttpRequest(toolFlag, messageIsRequest, messageInfo);
+        if (entry != null) {
+            synchronized (reflectedEntryList) {
+                int row = reflectedEntryList.size();
+                reflectedEntryList.add(entry);
+                fireTableRowsInserted(row, row);
             }
         }
     }
 
-	//
+    //
     // extend AbstractTableModel
     //
-    
+
     @Override
-    public int getRowCount()
-    {
+    public int getRowCount() {
         return reflectedEntryList.size();
     }
 
     @Override
-    public int getColumnCount()
-    {
+    public int getColumnCount() {
         return 5;
     }
 
     @Override
-    public String getColumnName(int columnIndex)
-    {
+    public String getColumnName(int columnIndex) {
         return switch (columnIndex) {
             case 0 -> "#";
             case 1 -> "Host";
@@ -478,14 +198,12 @@ public class BurpExtender extends AbstractTableModel implements IBurpExtender, I
     }
 
     @Override
-    public Class<?> getColumnClass(int columnIndex)
-    {
+    public Class<?> getColumnClass(int columnIndex) {
         return String.class;
     }
 
     @Override
-    public Object getValueAt(int rowIndex, int columnIndex)
-    {
+    public Object getValueAt(int rowIndex, int columnIndex) {
         ReflectedEntry reflectedEntry = reflectedEntryList.get(rowIndex);
 
         return switch (columnIndex) {
@@ -502,160 +220,57 @@ public class BurpExtender extends AbstractTableModel implements IBurpExtender, I
     // implement IMessageEditorController
     // this allows our request/response viewers to obtain details about the messages being displayed
     //
-    
+
     @Override
-    public byte[] getRequest()
-    {
+    public byte[] getRequest() {
         return currentlyDisplayedItem.getRequest();
     }
 
     @Override
-    public byte[] getResponse()
-    {
+    public byte[] getResponse() {
         return currentlyDisplayedItem.getResponse();
     }
 
     @Override
-    public IHttpService getHttpService()
-    {
+    public IHttpService getHttpService() {
         return currentlyDisplayedItem.getHttpService();
     }
 
-    
+
     //
     // Extend JTable to handle cell selection
     //
-    
-    private class ReflectedTable extends JTable implements ActionListener
-    {
-        public ReflectedTable(TableModel tableModel)
-        {
-            super(tableModel);
-        }
-        
-        @Override
-        public void actionPerformed(ActionEvent event) 
-        {
-            JMenuItem menu = (JMenuItem) event.getSource();
-            int row = this.getSelectedRow();
 
-            // If no row is selected
-            if (row == -1)
-                return;
-            ReflectedEntry reflectedEntry = reflectedEntryList.get(row);
-            boolean useHttps = false;
-            if (reflectedEntry.url.getProtocol().equalsIgnoreCase("https"))
-                useHttps = true;
-            if (menu == menuItemScannerAll) 
-            {
-                // Send the request to the Scanner
-                callbacks.doActiveScan(reflectedEntry.url.getHost(), reflectedEntry.url.getPort(), useHttps, reflectedEntry.requestResponse.getRequest());
-            } 
-            else if (menu == menuItemScannerParameters)
-            {
-                // Send the reflected parameters to the Scanner
-                callbacks.doActiveScan(reflectedEntry.url.getHost(), reflectedEntry.url.getPort(), useHttps, reflectedEntry.requestResponse.getRequest(), reflectedEntry.requestResponse.getRequestMarkers());
-               
-            }
-            else if (menu == menuItemIntruder) 
-            {
-                // Send the request to the Intruder
-                callbacks.sendToIntruder(reflectedEntry.url.getHost(), reflectedEntry.url.getPort(), useHttps,
-                        reflectedEntry.requestResponse.getRequest(), reflectedEntry.requestResponse.getRequestMarkers());
-            } 
-            else if (menu == menuItemRepeater) 
-            {
-                // Send the request to the Repeater
-                callbacks.sendToRepeater(reflectedEntry.url.getHost(), reflectedEntry.url.getPort(), useHttps, reflectedEntry.requestResponse.getRequest(),null);
-            }   
-            else if (menu == menuItemCopyURL)
-            {
-                // Copy URL to the clipboard
-                StringSelection stringSelection = new StringSelection (reflectedEntry.url.toString());
-                Clipboard clpbrd = Toolkit.getDefaultToolkit ().getSystemClipboard ();
-                clpbrd.setContents (stringSelection, null);
-            }
-            else if (menu == menuItemDeleteItem)
-            {
-                reflectedEntryList.remove(row);
-                
-                //Reload the request table
-                ((AbstractTableModel)this.getModel()).fireTableDataChanged();
-                
-                // Clear the parameters table
-                ((ParametersTableModel)parametersTable.getModel()).reloadValues(new ReflectedEntry());
-                
-                // Clear request/response 
-                requestViewer.setMessage(new byte[0], true);
-                responseViewer.setMessage(new byte[0], false);
-
-            }
-            else if (menu == menuItemClearList)
-            {
-                reflectedEntryList.clear();
-                
-                //Reload the request table
-                ((AbstractTableModel)this.getModel()).fireTableDataChanged();
-                
-                // Clear the parameters table
-                ((ParametersTableModel)parametersTable.getModel()).reloadValues(new ReflectedEntry());
-                
-                // Clear request/response 
-                requestViewer.setMessage(new byte[0], true);
-                responseViewer.setMessage(new byte[0], false);
-
-            }
-        }
-        
-        @Override
-        public void changeSelection(int row, int col, boolean toggle, boolean extend)
-        {
-            // Reloading the Request/Response tabs
-            ReflectedEntry reflectedEntry = reflectedEntryList.get(row);
-            requestViewer.setMessage(reflectedEntry.requestResponse.getRequest(), true);
-            responseViewer.setMessage(reflectedEntry.requestResponse.getResponse(), false);
-            currentlyDisplayedItem = reflectedEntry.requestResponse;
-            
-            // Reloading the Parameters list
-            parametersTable.reloadValues(reflectedEntry);
-            super.changeSelection(row, col, toggle, extend);
-        }        
-    }
-    
     // Parameters table
-    private static class ParametersTableModel extends AbstractTableModel
-    {
+    private static class ParametersTableModel extends AbstractTableModel {
         ReflectedEntry reflectedEntry;
-        
-        public ParametersTableModel()
-        {
+
+        public ParametersTableModel() {
             this.reflectedEntry = new ReflectedEntry();
         }
-        public void reloadValues(ReflectedEntry reflectedEntry)
-        {
+
+        public void reloadValues(ReflectedEntry reflectedEntry) {
             this.reflectedEntry = reflectedEntry;
             this.fireTableDataChanged();
         }
-        
+
         @Override
-        public Object getValueAt(int rowIndex, int columnIndex)
-        {
+        public Object getValueAt(int rowIndex, int columnIndex) {
             return reflectedEntry.parameters.get(rowIndex)[columnIndex];
         }
-         @Override
-        public int getColumnCount()
-        {
+
+        @Override
+        public int getColumnCount() {
             return 3;
         }
+
         @Override
-        public int getRowCount()
-        {
+        public int getRowCount() {
             return reflectedEntry.parameters.size();
         }
-        
+
         @Override
-        public String getColumnName(int columnIndex)
-        {
+        public String getColumnName(int columnIndex) {
             return switch (columnIndex) {
                 case 0 -> "Parameter name";
                 case 1 -> "Parameter value";
@@ -663,22 +278,102 @@ public class BurpExtender extends AbstractTableModel implements IBurpExtender, I
                 default -> "";
             };
         }
+
         @Override
-        public Class<?> getColumnClass(int columnIndex)
-        {
+        public Class<?> getColumnClass(int columnIndex) {
             return String.class;
         }
     }
-    
-    private class ParametersTable extends JTable implements ActionListener
-    {
+
+    //
+    // Class to hold details of each reflected entry
+    //
+
+
+    private class ReflectedTable extends JTable implements ActionListener {
+        public ReflectedTable(TableModel tableModel) {
+            super(tableModel);
+        }
+
+        @Override
+        public void actionPerformed(ActionEvent event) {
+            JMenuItem menu = (JMenuItem) event.getSource();
+            int row = this.getSelectedRow();
+
+            // If no row is selected
+            if (row == -1)
+                return;
+            ReflectedEntry reflectedEntry = reflectedEntryList.get(row);
+            boolean useHttps = reflectedEntry.url.getProtocol().equalsIgnoreCase("https");
+            if (menu == menuItemScannerAll) {
+                // Send the request to the Scanner
+                callbacks.doActiveScan(reflectedEntry.url.getHost(), reflectedEntry.url.getPort(), useHttps, reflectedEntry.requestResponse.getRequest());
+            } else if (menu == menuItemScannerParameters) {
+                // Send the reflected parameters to the Scanner
+                callbacks.doActiveScan(reflectedEntry.url.getHost(), reflectedEntry.url.getPort(), useHttps, reflectedEntry.requestResponse.getRequest(), reflectedEntry.requestResponse.getRequestMarkers());
+
+            } else if (menu == menuItemIntruder) {
+                // Send the request to the Intruder
+                callbacks.sendToIntruder(reflectedEntry.url.getHost(), reflectedEntry.url.getPort(), useHttps,
+                        reflectedEntry.requestResponse.getRequest(), reflectedEntry.requestResponse.getRequestMarkers());
+            } else if (menu == menuItemRepeater) {
+                // Send the request to the Repeater
+                callbacks.sendToRepeater(reflectedEntry.url.getHost(), reflectedEntry.url.getPort(), useHttps, reflectedEntry.requestResponse.getRequest(), null);
+            } else if (menu == menuItemCopyURL) {
+                // Copy URL to the clipboard
+                StringSelection stringSelection = new StringSelection(reflectedEntry.url.toString());
+                Clipboard clpbrd = Toolkit.getDefaultToolkit().getSystemClipboard();
+                clpbrd.setContents(stringSelection, null);
+            } else if (menu == menuItemDeleteItem) {
+                reflectedEntryList.remove(row);
+
+                //Reload the request table
+                ((AbstractTableModel) this.getModel()).fireTableDataChanged();
+
+                // Clear the parameters table
+                ((ParametersTableModel) parametersTable.getModel()).reloadValues(new ReflectedEntry());
+
+                // Clear request/response
+                requestViewer.setMessage(new byte[0], true);
+                responseViewer.setMessage(new byte[0], false);
+
+            } else if (menu == menuItemClearList) {
+                reflectedEntryList.clear();
+
+                //Reload the request table
+                ((AbstractTableModel) this.getModel()).fireTableDataChanged();
+
+                // Clear the parameters table
+                ((ParametersTableModel) parametersTable.getModel()).reloadValues(new ReflectedEntry());
+
+                // Clear request/response
+                requestViewer.setMessage(new byte[0], true);
+                responseViewer.setMessage(new byte[0], false);
+
+            }
+        }
+
+        @Override
+        public void changeSelection(int row, int col, boolean toggle, boolean extend) {
+            // Reloading the Request/Response tabs
+            ReflectedEntry reflectedEntry = reflectedEntryList.get(row);
+            requestViewer.setMessage(reflectedEntry.requestResponse.getRequest(), true);
+            responseViewer.setMessage(reflectedEntry.requestResponse.getResponse(), false);
+            currentlyDisplayedItem = reflectedEntry.requestResponse;
+
+            // Reloading the Parameters list
+            parametersTable.reloadValues(reflectedEntry);
+            super.changeSelection(row, col, toggle, extend);
+        }
+    }
+
+    private class ParametersTable extends JTable implements ActionListener {
         private final JPopupMenu popupMenu;
         private final JMenuItem menuItemScannerParameter;
-        
-        public ParametersTable(TableModel tableModel)
-        {
+
+        public ParametersTable(TableModel tableModel) {
             super(tableModel);
-            
+
             // Creating popup menu
             popupMenu = new JPopupMenu();
             menuItemScannerParameter = new JMenuItem("Scan parameter");
@@ -686,53 +381,21 @@ public class BurpExtender extends AbstractTableModel implements IBurpExtender, I
             popupMenu.add(menuItemScannerParameter);
             this.setComponentPopupMenu(popupMenu);
         }
-        private void reloadValues(ReflectedEntry reflectedEntry) 
-        {
-            ((ParametersTableModel)this.getModel()).reloadValues(reflectedEntry);
+
+        private void reloadValues(ReflectedEntry reflectedEntry) {
+            ((ParametersTableModel) this.getModel()).reloadValues(reflectedEntry);
         }
-        
+
         @Override
-        public void actionPerformed(ActionEvent event) 
-        {               
+        public void actionPerformed(ActionEvent event) {
             int row = this.getSelectedRow();
             if (row == -1)
                 return;
-            ReflectedEntry reflectedEntry = ((ParametersTableModel)this.getModel()).reflectedEntry;
-            List<int[]> param = new ArrayList<> ();
+            ReflectedEntry reflectedEntry = ((ParametersTableModel) this.getModel()).reflectedEntry;
+            List<int[]> param = new ArrayList<>();
             param.add(reflectedEntry.requestResponse.getRequestMarkers().get(row));
-            callbacks.doActiveScan(reflectedEntry.url.getHost(), reflectedEntry.url.getPort(), 
+            callbacks.doActiveScan(reflectedEntry.url.getHost(), reflectedEntry.url.getPort(),
                     reflectedEntry.url.getProtocol().equalsIgnoreCase("https"), reflectedEntry.requestResponse.getRequest(), param);
-        }
-    }
-    
-    //
-    // Class to hold details of each reflected entry
-    //
-    private static class ReflectedEntry
-    {
-        final IHttpRequestResponseWithMarkers requestResponse;  // Request and response
-        final URL url;                                          // Request URL
-        final String method;                                    // Method used in the request
-        List<String[]> parameters;                              // Parameter names with the values
-        final String tool;                                      // Tool name from which the request was sent
-        
-        ReflectedEntry()
-        {
-            requestResponse = null;
-            url = null;
-            tool = null;
-            method = null;
-            parameters = new ArrayList<>();
-        }
-        
-        ReflectedEntry(IHttpRequestResponseWithMarkers requestResponse, URL url, String method, List<String[]> parameters, String tool)
-        {
-            
-            this.requestResponse = requestResponse;
-            this.url = url;
-            this.method = method;
-            this.parameters = parameters;
-            this.tool = tool;
         }
     }
 }
