@@ -120,7 +120,8 @@ public class ReflectionAnalyzer {
         stdout.println("Analyzing HttpRequest");
 
         IRequestInfo iRequest = helpers.analyzeRequest(messageInfo.getRequest());
-        stdout.println("callbacks.isInScope");
+        IHttpRequestResponseWithMarkers messageInfoMarked = callbacks.applyMarkers(messageInfo, null, null);
+        List<int[]> requestMarkers = new ArrayList<>();
         List<String[]> parameters = new ArrayList<>();
         List<String> reflectedValues = new ArrayList<>();
 
@@ -131,6 +132,8 @@ public class ReflectionAnalyzer {
             if (isContainedOnRequestHistory(param.getValue())) {
                 stdout.println("Reflected Value found: " + param.getValue());
                 reflectedValues.add(param.getValue());
+                requestMarkers.add(new int[] {param.getValueStart(),param.getValueEnd()});
+                messageInfoMarked = callbacks.applyMarkers(messageInfo, requestMarkers, null);
                 parameters.add(new String[]{param.getName(), param.getValue(), String.join(",", reflectedValues)});
             }
         }
@@ -152,7 +155,7 @@ public class ReflectionAnalyzer {
         }
 
         return new ReflectedEntry(
-                null,
+                messageInfoMarked,
                 helpers.analyzeRequest(messageInfo).getUrl(),
                 helpers.analyzeRequest(messageInfo).getMethod(),
                 parameters,
