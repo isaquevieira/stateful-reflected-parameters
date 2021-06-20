@@ -6,15 +6,14 @@ This project is a fork of reflected-parameters project designed to be a stateful
 
 # Build
 
-To build via eclipse: Right Click on Project-> Run As-> Maven build
-
-Or to build via console, execute the following command in project directory
+To build, execute the following commands in project directory
 ```
-$ mvn clean package
+$ gradle clean
+$ gradle fatJar
 ```
 
-The Jar is created under the $project/target folder.
-For more information about the build: [link](http://tutorials.jenkov.com/maven/maven-build-fat-jar.html)
+The Jar is created under the $project/build/libs/ folder.
+For more information about the build: [link](https://mkyong.com/gradle/gradle-create-a-jar-file-with-dependencies/)
 
 
 # How does it work?
