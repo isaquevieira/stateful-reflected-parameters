@@ -138,7 +138,9 @@ public class ReflectionAnalyzer {
             }
         }
 
+        stdout.println(url);
         for (Parameter param : getParamsFromURL(url)) {
+            stdout.println(String.format("%s: %s", param.name, param.value));
             if (isContainedOnRequestHistory(param.name)) {
                 reflectedValues.add(param.value);
                 parameters.add(new String[]{param.name, param.value, String.join(",", reflectedValues)});
@@ -170,10 +172,14 @@ public class ReflectionAnalyzer {
         Iterator<String> it = pathParams.iterator();
 
         while (it.hasNext()) {
-            String value = it.next();
-            String paramName = it.next();
-            if (paramName != null) {
-                result.add(new Parameter(paramName, value));
+            try {
+                String value = it.next();
+                String paramName = it.next();
+                if (paramName != null) {
+                    result.add(new Parameter(paramName, value));
+                }
+            } catch (NoSuchElementException exception) {
+                continue;
             }
         }
         return result;
