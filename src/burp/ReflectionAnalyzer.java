@@ -5,7 +5,6 @@ import org.json.JSONObject;
 import java.io.PrintWriter;
 import java.net.URL;
 import java.util.*;
-import java.util.stream.Collectors;
 
 import static java.util.Collections.*;
 
@@ -13,7 +12,17 @@ public class ReflectionAnalyzer {
     private final IBurpExtenderCallbacks callbacks;
     private final PrintWriter stdout;
     private final IExtensionHelpers helpers;
-    Map<IHttpRequestResponse, JSONObject> historicOfRequestsMap = new HashMap<>();
+    List<HistoryEntry> historicOfRequests = new ArrayList<>();
+
+    private class HistoryEntry {
+        IHttpRequestResponse response;
+        JSONObject json;
+
+        public HistoryEntry(IHttpRequestResponse response, JSONObject json) {
+            this.response = response;
+            this.json = json;
+        }
+    }
 
     public ReflectionAnalyzer(IBurpExtenderCallbacks callbacks) {
         this.callbacks = callbacks;
@@ -36,8 +45,8 @@ public class ReflectionAnalyzer {
     }
 
     public boolean isContainedOnRequestHistory(String key) {
-        for (IHttpRequestResponse out : historicOfRequestsMap.keySet()) {
-            if (checkIfAValueExistsInJSONObject(historicOfRequestsMap.get(out), key)) {
+        for (HistoryEntry out : historicOfRequests) {
+            if (checkIfAValueExistsInJSONObject(out.json, key)) {
                 return true;
             }
         }
@@ -87,7 +96,7 @@ public class ReflectionAnalyzer {
 
                 stdout.println("responseBody: " + responseBody);
                 JSONObject resobj = new JSONObject(responseBody);
-                historicOfRequestsMap.put(messageInfo, resobj);
+                historicOfRequests.add(new HistoryEntry(messageInfo, resobj));
 
                 stdout.println("Current JSONObject:");
                 for (String out : printJSONObject(resobj)) {
@@ -95,9 +104,9 @@ public class ReflectionAnalyzer {
                 }
 
                 stdout.println("Current historicOfRequestsMap state:");
-                for (IHttpRequestResponse out : historicOfRequestsMap.keySet()) {
-                    for (String mapOut : historicOfRequestsMap.get(out).keySet()) {
-                        stdout.println(mapOut + ":" + historicOfRequestsMap.get(out).get(mapOut));
+                for (HistoryEntry out : historicOfRequests) {
+                    for (String mapOut : out.json.keySet()) {
+                        stdout.println(mapOut + ":" + out.json.get(mapOut));
                     }
                 }
             } catch (Exception e) {
@@ -122,6 +131,7 @@ public class ReflectionAnalyzer {
         IRequestInfo iRequest = helpers.analyzeRequest(messageInfo.getRequest());
         IHttpRequestResponseWithMarkers messageInfoMarked = callbacks.applyMarkers(messageInfo, null, null);
         List<int[]> requestMarkers = new ArrayList<>();
+        List<int[]> responseMarkers = new ArrayList<>();
         List<String[]> parameters = new ArrayList<>();
         List<String> reflectedValues = new ArrayList<>();
 
@@ -133,7 +143,7 @@ public class ReflectionAnalyzer {
                 stdout.println("Reflected Value found: " + param.getValue());
                 reflectedValues.add(param.getValue());
                 requestMarkers.add(new int[] {param.getValueStart(),param.getValueEnd()});
-                messageInfoMarked = callbacks.applyMarkers(messageInfo, requestMarkers, null);
+                messageInfoMarked = callbacks.applyMarkers(messageInfo, requestMarkers, responseMarkers);
                 parameters.add(new String[]{param.getName(), param.getValue(), String.join(",", reflectedValues)});
             }
         }
