@@ -149,11 +149,11 @@ public class ReflectionAnalyzer {
         }
 
         stdout.println(url);
-        for (Parameter param : getParamsFromURL(url)) {
-            stdout.println(String.format("%s: %s", param.name, param.value));
-            if (isContainedOnRequestHistory(param.name)) {
-                reflectedValues.add(param.value);
-                parameters.add(new String[]{param.name, param.value, String.join(",", reflectedValues)});
+        for (String param : getParamsFromURL(url)) {
+            stdout.println(String.format("path param: %s", param));
+            if (isContainedOnRequestHistory(param)) {
+                reflectedValues.add(param);
+                parameters.add(new String[]{param, param, String.join(",", reflectedValues)});
             }
         }
 //
@@ -175,33 +175,7 @@ public class ReflectionAnalyzer {
         );
     }
 
-    private List<Parameter> getParamsFromURL(URL url) {
-        List<Parameter> result = new ArrayList<>();
-        List<String> pathParams = Arrays.asList(url.getPath().split("/"));
-        reverse(pathParams);
-        Iterator<String> it = pathParams.iterator();
-
-        while (it.hasNext()) {
-            try {
-                String value = it.next();
-                String paramName = it.next();
-                if (paramName != null) {
-                    result.add(new Parameter(paramName, value));
-                }
-            } catch (NoSuchElementException exception) {
-                continue;
-            }
-        }
-        return result;
-    }
-
-    class Parameter {
-        String name;
-        String value;
-
-        Parameter(String name, String value) {
-            this.name = name;
-            this.value = value;
-        }
+    private List<String> getParamsFromURL(URL url) {
+        return Arrays.asList(url.getPath().split("/"));
     }
 }
