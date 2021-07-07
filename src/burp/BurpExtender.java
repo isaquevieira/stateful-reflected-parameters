@@ -139,8 +139,7 @@ public class BurpExtender extends AbstractTableModel implements IBurpExtender, I
             callbacks.registerHttpListener(BurpExtender.this);
 
             stdout.println("Stateful Reflection plugin v0.01");
-            stdout.println("Author: ASSF");
-            stdout.println("Source: https://github.com/ailton07/stateful-reflected-parameters");
+            stdout.println("Source: https://github.com/isaquevieira/stateful-reflected-parameters");
         });
 
     }
