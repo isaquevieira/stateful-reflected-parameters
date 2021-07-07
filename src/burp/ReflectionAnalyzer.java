@@ -1,5 +1,6 @@
 package burp;
 
+import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.PrintWriter;
@@ -32,11 +33,15 @@ public class ReflectionAnalyzer {
 
     public static boolean checkIfAValueExistsInJSONObject(JSONObject jsonObject, String value) {
         for (String key : jsonObject.keySet()) {
-            String objString = jsonObject.get(key).toString();
-
-            if (jsonObject.get(key) instanceof JSONObject) {
-                JSONObject child = new JSONObject(jsonObject.get(key).toString());
-                return checkIfAValueExistsInJSONObject(child, value);
+            if (jsonObject.get(key) instanceof JSONArray) {
+                JSONArray array = jsonObject.getJSONArray(key);
+                for (Object child : array) {
+                    if (checkIfAValueExistsInJSONObject((JSONObject) child, value)) {
+                        return true;
+                    }
+                }
+            } else if (jsonObject.get(key) instanceof JSONObject) {
+                return checkIfAValueExistsInJSONObject(jsonObject.getJSONObject(key), value);
             } else {
                 return value.equals(jsonObject.get(key).toString());
             }
@@ -138,6 +143,9 @@ public class ReflectionAnalyzer {
         stdout.println("Listing params");
         for (IParameter param : iRequest.getParameters()) {
             stdout.println(param.getValue());
+            if (param.getValue().isBlank()) {
+                continue;
+            }
 
             if (isContainedOnRequestHistory(param.getValue())) {
                 stdout.println("Reflected Value found: " + param.getValue());
@@ -150,7 +158,11 @@ public class ReflectionAnalyzer {
 
         stdout.println(url);
         for (String param : getParamsFromURL(url)) {
+            if (param.isBlank()) {
+                continue;
+            }
             stdout.println(String.format("path param: %s", param));
+
             if (isContainedOnRequestHistory(param)) {
                 reflectedValues.add(param);
                 parameters.add(new String[]{param, param, String.join(",", reflectedValues)});
@@ -165,6 +177,12 @@ public class ReflectionAnalyzer {
         if (parameters.size() < 1) {
             return null;
         }
+
+        stdout.println("Reflected params");
+        for (String[] param : parameters) {
+            stdout.println(Arrays.toString(param));
+        }
+        stdout.println("----------------");
 
         return new ReflectedEntry(
                 messageInfoMarked,
