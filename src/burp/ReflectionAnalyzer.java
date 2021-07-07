@@ -6,6 +6,7 @@ import org.json.JSONObject;
 import java.io.PrintWriter;
 import java.net.URL;
 import java.util.*;
+import java.util.stream.Collectors;
 
 import static java.util.Collections.*;
 
@@ -22,6 +23,32 @@ public class ReflectionAnalyzer {
         public HistoryEntry(IHttpRequestResponse response, JSONObject json) {
             this.response = response;
             this.json = json;
+        }
+
+        @Override
+        public String toString() {
+            return "HistoryEntry{" +
+                    "\nurl=" + helpers.analyzeRequest(response).getUrl().toString() +
+                    "\njson=" + json +
+                    "\n}";
+        }
+    }
+
+    private class Param {
+        HistoryEntry producer;
+        String[] values;
+
+        Param(HistoryEntry producer, String[] values) {
+            this.producer = producer;
+            this.values = values;
+        }
+
+        @Override
+        public String toString() {
+            return "Param{\n" +
+                    "producer=" + producer +
+                    ", \nvalues=" + Arrays.toString(values) +
+                    '}';
         }
     }
 
@@ -41,39 +68,23 @@ public class ReflectionAnalyzer {
                     }
                 }
             } else if (jsonObject.get(key) instanceof JSONObject) {
-                return checkIfAValueExistsInJSONObject(jsonObject.getJSONObject(key), value);
+                return checkIfAValueExistsInJSONObject((JSONObject) jsonObject.get(key), value);
             } else {
-                return value.equals(jsonObject.get(key).toString());
+                if (value.equals(jsonObject.get(key).toString())) {
+                    return true;
+                }
             }
         }
         return false;
     }
 
-    public boolean isContainedOnRequestHistory(String key) {
+    public HistoryEntry isContainedOnRequestHistory(String key) {
         for (HistoryEntry out : historicOfRequests) {
             if (checkIfAValueExistsInJSONObject(out.json, key)) {
-                return true;
+                return out;
             }
         }
-        return false;
-    }
-
-    // ref: https://stackoverflow.com/a/24372548
-    // ref: https://stackoverflow.com/a/30709527/13912378
-    // Extract the values from a JSON object
-    //TODO: remove
-    // Nao foi removido ainda pq pode ser útil para referencia
-    public static List<String> printJSONObject(JSONObject resobj) {
-        List<String> values = new ArrayList<>();
-        for (String key : resobj.keySet()) {
-            if (resobj.get(key) instanceof JSONObject) {
-                JSONObject child = new JSONObject(resobj.get(key).toString());
-                values.addAll(printJSONObject(child));
-            } else {
-                values.add(resobj.get(key).toString());
-            }
-        }
-        return values;
+        return null;
     }
 
     private boolean isFromAcceptedTool(int toolFlag) {
@@ -99,21 +110,8 @@ public class ReflectionAnalyzer {
                 int bodyOffset = iResponse.getBodyOffset();
                 String responseBody = response.substring(bodyOffset);
 
-                stdout.println("responseBody: " + responseBody);
-                JSONObject resobj = new JSONObject(responseBody);
-                historicOfRequests.add(new HistoryEntry(messageInfo, resobj));
-
-                stdout.println("Current JSONObject:");
-                for (String out : printJSONObject(resobj)) {
-                    stdout.println(out);
-                }
-
-                stdout.println("Current historicOfRequestsMap state:");
-                for (HistoryEntry out : historicOfRequests) {
-                    for (String mapOut : out.json.keySet()) {
-                        stdout.println(mapOut + ":" + out.json.get(mapOut));
-                    }
-                }
+                JSONObject resObj = new JSONObject(responseBody);
+                historicOfRequests.add(new HistoryEntry(messageInfo, resObj));
             } catch (Exception e) {
                 System.out.println("Error to parser JSON");
                 e.printStackTrace();
@@ -131,28 +129,28 @@ public class ReflectionAnalyzer {
         if (!callbacks.isInScope(url))
             return null;
 
-        stdout.println("Analyzing HttpRequest");
-
         IRequestInfo iRequest = helpers.analyzeRequest(messageInfo.getRequest());
         IHttpRequestResponseWithMarkers messageInfoMarked = callbacks.applyMarkers(messageInfo, null, null);
         List<int[]> requestMarkers = new ArrayList<>();
         List<int[]> responseMarkers = new ArrayList<>();
-        List<String[]> parameters = new ArrayList<>();
-        List<String> reflectedValues = new ArrayList<>();
+        //List<String[]> parameters = new ArrayList<>();
+        //List<String> reflectedValues = new ArrayList<>();
+        List<Param> parameters = new ArrayList<>();
 
-        stdout.println("Listing params");
         for (IParameter param : iRequest.getParameters()) {
             stdout.println(param.getValue());
             if (param.getValue().isBlank()) {
                 continue;
             }
 
-            if (isContainedOnRequestHistory(param.getValue())) {
-                stdout.println("Reflected Value found: " + param.getValue());
-                reflectedValues.add(param.getValue());
+            HistoryEntry producer = isContainedOnRequestHistory(param.getValue());
+
+            if (producer != null) {
+                //reflectedValues.add(param.getValue());
                 requestMarkers.add(new int[] {param.getValueStart(),param.getValueEnd()});
                 messageInfoMarked = callbacks.applyMarkers(messageInfo, requestMarkers, responseMarkers);
-                parameters.add(new String[]{param.getName(), param.getValue(), String.join(",", reflectedValues)});
+                String[] paramValues = new String[]{param.getName(), param.getValue(), param.getValue()/*String.join(",", reflectedValues)*/};
+                parameters.add(new Param(producer, paramValues));
             }
         }
 
@@ -161,34 +159,29 @@ public class ReflectionAnalyzer {
             if (param.isBlank()) {
                 continue;
             }
-            stdout.println(String.format("path param: %s", param));
 
-            if (isContainedOnRequestHistory(param)) {
-                reflectedValues.add(param);
-                parameters.add(new String[]{param, param, String.join(",", reflectedValues)});
+            HistoryEntry producer = isContainedOnRequestHistory(param);
+
+            if (producer != null) {
+                //reflectedValues.add(param);
+                String[] paramValues = new String[]{param, param, param/*String.join(",", reflectedValues)*/};
+                parameters.add(new Param(producer, paramValues));
             }
         }
-//
-//                // TODO: scan headers
-//                List<String> headers = iRequest.getHeaders();
-//                for (String header: headers) {
-//                	stdout.println(header);
-//                }
+
         if (parameters.size() < 1) {
             return null;
         }
 
-        stdout.println("Reflected params");
-        for (String[] param : parameters) {
-            stdout.println(Arrays.toString(param));
+        for (Param param : parameters) {
+            stdout.println(param);
         }
-        stdout.println("----------------");
 
         return new ReflectedEntry(
                 messageInfoMarked,
                 helpers.analyzeRequest(messageInfo).getUrl(),
                 helpers.analyzeRequest(messageInfo).getMethod(),
-                parameters,
+                parameters.stream().map(p -> p.values).collect(Collectors.toList()),
                 callbacks.getToolName(toolFlag)
         );
     }
