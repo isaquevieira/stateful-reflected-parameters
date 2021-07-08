@@ -9,7 +9,7 @@ class ReflectedEntry {
     final URL url;                                          // Request URL
     final String method;                                    // Method used in the request
     final String tool;                                      // Tool name from which the request was sent
-    List<String[]> parameters;                              // Parameter names with the values
+    List<Param> parameters;                              // Parameter names with the values
 
     ReflectedEntry() {
         requestResponse = null;
@@ -19,7 +19,7 @@ class ReflectedEntry {
         parameters = new ArrayList<>();
     }
 
-    ReflectedEntry(IHttpRequestResponseWithMarkers requestResponse, URL url, String method, List<String[]> parameters, String tool) {
+    ReflectedEntry(IHttpRequestResponseWithMarkers requestResponse, URL url, String method, List<Param> parameters, String tool) {
         this.requestResponse = requestResponse;
         this.url = url;
         this.method = method;

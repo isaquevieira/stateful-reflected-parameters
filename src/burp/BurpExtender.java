@@ -9,6 +9,7 @@ import java.awt.datatransfer.StringSelection;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.io.PrintWriter;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -242,20 +243,20 @@ public class BurpExtender extends AbstractTableModel implements IBurpExtender, I
 
     // Parameters table
     private static class ParametersTableModel extends AbstractTableModel {
-        ReflectedEntry reflectedEntry;
+        List<Param> params;
 
         public ParametersTableModel() {
-            this.reflectedEntry = new ReflectedEntry();
+            this.params = new ArrayList<>();
         }
 
-        public void reloadValues(ReflectedEntry reflectedEntry) {
-            this.reflectedEntry = reflectedEntry;
+        public void reloadValues(List<Param> params) {
+            this.params = params;
             this.fireTableDataChanged();
         }
 
         @Override
         public Object getValueAt(int rowIndex, int columnIndex) {
-            return reflectedEntry.parameters.get(rowIndex)[columnIndex];
+            return params.get(rowIndex).values[columnIndex];
         }
 
         @Override
@@ -265,7 +266,7 @@ public class BurpExtender extends AbstractTableModel implements IBurpExtender, I
 
         @Override
         public int getRowCount() {
-            return reflectedEntry.parameters.size();
+            return params.size();
         }
 
         @Override
@@ -330,7 +331,7 @@ public class BurpExtender extends AbstractTableModel implements IBurpExtender, I
                 ((AbstractTableModel) this.getModel()).fireTableDataChanged();
 
                 // Clear the parameters table
-                ((ParametersTableModel) parametersTable.getModel()).reloadValues(new ReflectedEntry());
+                ((ParametersTableModel) parametersTable.getModel()).reloadValues(new ArrayList<>());
 
                 // Clear request/response
                 requestViewer.setMessage(new byte[0], true);
@@ -343,7 +344,7 @@ public class BurpExtender extends AbstractTableModel implements IBurpExtender, I
                 ((AbstractTableModel) this.getModel()).fireTableDataChanged();
 
                 // Clear the parameters table
-                ((ParametersTableModel) parametersTable.getModel()).reloadValues(new ReflectedEntry());
+                ((ParametersTableModel) parametersTable.getModel()).reloadValues(new ArrayList<>());
 
                 // Clear request/response
                 requestViewer.setMessage(new byte[0], true);
@@ -357,11 +358,11 @@ public class BurpExtender extends AbstractTableModel implements IBurpExtender, I
             // Reloading the Request/Response tabs
             ReflectedEntry reflectedEntry = reflectedEntryList.get(row);
             requestViewer.setMessage(reflectedEntry.requestResponse.getRequest(), true);
-            responseViewer.setMessage(reflectedEntry.requestResponse.getResponse(), false);
+            responseViewer.setMessage("placeholder".getBytes(StandardCharsets.UTF_8), false);
             currentlyDisplayedItem = reflectedEntry.requestResponse;
 
             // Reloading the Parameters list
-            parametersTable.reloadValues(reflectedEntry);
+            parametersTable.reloadValues(reflectedEntry.parameters);
             super.changeSelection(row, col, toggle, extend);
         }
     }
@@ -381,20 +382,20 @@ public class BurpExtender extends AbstractTableModel implements IBurpExtender, I
             this.setComponentPopupMenu(popupMenu);
         }
 
-        private void reloadValues(ReflectedEntry reflectedEntry) {
-            ((ParametersTableModel) this.getModel()).reloadValues(reflectedEntry);
+        private void reloadValues(List<Param> params) {
+            ((ParametersTableModel) this.getModel()).reloadValues(params);
         }
 
         @Override
         public void actionPerformed(ActionEvent event) {
-            int row = this.getSelectedRow();
-            if (row == -1)
-                return;
-            ReflectedEntry reflectedEntry = ((ParametersTableModel) this.getModel()).reflectedEntry;
-            List<int[]> param = new ArrayList<>();
-            param.add(reflectedEntry.requestResponse.getRequestMarkers().get(row));
-            callbacks.doActiveScan(reflectedEntry.url.getHost(), reflectedEntry.url.getPort(),
-                    reflectedEntry.url.getProtocol().equalsIgnoreCase("https"), reflectedEntry.requestResponse.getRequest(), param);
+//            int row = this.getSelectedRow();
+//            if (row == -1)
+//                return;
+//            ReflectedEntry reflectedEntry = ((ParametersTableModel) this.getModel()).reflectedEntry;
+//            List<int[]> param = new ArrayList<>();
+//            param.add(reflectedEntry.requestResponse.getRequestMarkers().get(row));
+//            callbacks.doActiveScan(reflectedEntry.url.getHost(), reflectedEntry.url.getPort(),
+//                    reflectedEntry.url.getProtocol().equalsIgnoreCase("https"), reflectedEntry.requestResponse.getRequest(), param);
         }
     }
 }

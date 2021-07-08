@@ -10,47 +10,46 @@ import java.util.stream.Collectors;
 
 import static java.util.Collections.*;
 
+class HistoryEntry {
+    IHttpRequestResponse response;
+    JSONObject json;
+
+    public HistoryEntry(IHttpRequestResponse response, JSONObject json) {
+        this.response = response;
+        this.json = json;
+    }
+
+    @Override
+    public String toString() {
+        return "HistoryEntry{" +
+                "\njson=" + json +
+                "\n}";
+    }
+}
+
+class Param {
+    HistoryEntry producer;
+    String[] values;
+
+    Param(HistoryEntry producer, String[] values) {
+        this.producer = producer;
+        this.values = values;
+    }
+
+    @Override
+    public String toString() {
+        return "Param{\n" +
+                "producer=" + producer +
+                ", \nvalues=" + Arrays.toString(values) +
+                '}';
+    }
+}
+
 public class ReflectionAnalyzer {
     private final IBurpExtenderCallbacks callbacks;
     private final PrintWriter stdout;
     private final IExtensionHelpers helpers;
     List<HistoryEntry> historicOfRequests = new ArrayList<>();
-
-    private class HistoryEntry {
-        IHttpRequestResponse response;
-        JSONObject json;
-
-        public HistoryEntry(IHttpRequestResponse response, JSONObject json) {
-            this.response = response;
-            this.json = json;
-        }
-
-        @Override
-        public String toString() {
-            return "HistoryEntry{" +
-                    "\nurl=" + helpers.analyzeRequest(response).getUrl().toString() +
-                    "\njson=" + json +
-                    "\n}";
-        }
-    }
-
-    private class Param {
-        HistoryEntry producer;
-        String[] values;
-
-        Param(HistoryEntry producer, String[] values) {
-            this.producer = producer;
-            this.values = values;
-        }
-
-        @Override
-        public String toString() {
-            return "Param{\n" +
-                    "producer=" + producer +
-                    ", \nvalues=" + Arrays.toString(values) +
-                    '}';
-        }
-    }
 
     public ReflectionAnalyzer(IBurpExtenderCallbacks callbacks) {
         this.callbacks = callbacks;
@@ -181,7 +180,7 @@ public class ReflectionAnalyzer {
                 messageInfoMarked,
                 helpers.analyzeRequest(messageInfo).getUrl(),
                 helpers.analyzeRequest(messageInfo).getMethod(),
-                parameters.stream().map(p -> p.values).collect(Collectors.toList()),
+                parameters, //.stream().map(p -> p.values).collect(Collectors.toList()),
                 callbacks.getToolName(toolFlag)
         );
     }
