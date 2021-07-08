@@ -13,15 +13,18 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 
-public class BurpExtender extends AbstractTableModel implements IBurpExtender, ITab, IHttpListener, IMessageEditorController {
+public class BurpExtender extends AbstractTableModel implements IBurpExtender, ITab, IHttpListener {
     private final List<ReflectedEntry> reflectedEntryList = new ArrayList<>();
     private ReflectionAnalyzer analyzer;
     private PrintWriter stdout;
     private IBurpExtenderCallbacks callbacks;
-    private JSplitPane splitPane;
-    private JSplitPane splitPane2;
+    private JSplitPane rootSplitPane;
+    private JSplitPane requestsSplitPane;
+    private JSplitPane paramsSplitPane;
     private IMessageEditor requestViewer;
     private IMessageEditor responseViewer;
+    private IMessageEditor paramsRequestViewer;
+    private IMessageEditor paramsResponseViewer;
     private ParametersTable parametersTable;
     private IHttpRequestResponse currentlyDisplayedItem;
 
@@ -50,19 +53,9 @@ public class BurpExtender extends AbstractTableModel implements IBurpExtender, I
 
         // create our UI
         SwingUtilities.invokeLater(() -> {
-            // Main split pane
-            splitPane = new JSplitPane(JSplitPane.VERTICAL_SPLIT);
-            splitPane.setResizeWeight(0.4f);
-            splitPane2 = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT);
-            splitPane2.setResizeWeight(0.35f);
-
             // Table of reflected entries
             ReflectedTable requestTable = new ReflectedTable(BurpExtender.this);
             ParametersTableModel parametersTableModel = new ParametersTableModel();
-
-            parametersTable = new ParametersTable(parametersTableModel);
-            parametersTable.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
-
 
             // Setting the columns width
             requestTable.setAutoResizeMode(JTable.AUTO_RESIZE_OFF);
@@ -73,7 +66,6 @@ public class BurpExtender extends AbstractTableModel implements IBurpExtender, I
             requestTable.getColumnModel().getColumn(4).setPreferredWidth(80);
             requestTable.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
 
-
             // Creating popup menu
             JPopupMenu popupMenu = new JPopupMenu();
             menuItemScannerAll = new JMenuItem("Active scan whole request");
@@ -83,8 +75,6 @@ public class BurpExtender extends AbstractTableModel implements IBurpExtender, I
             menuItemCopyURL = new JMenuItem("Copy URL");
             menuItemDeleteItem = new JMenuItem("Delete item");
             menuItemClearList = new JMenuItem("Clear list");
-
-
             menuItemScannerAll.addActionListener(requestTable);
             menuItemScannerParameters.addActionListener(requestTable);
             menuItemIntruder.addActionListener(requestTable);
@@ -106,31 +96,49 @@ public class BurpExtender extends AbstractTableModel implements IBurpExtender, I
             requestTable.setComponentPopupMenu(popupMenu);
 
             JScrollPane scrollPane = new JScrollPane(requestTable);
-            JScrollPane scrollPane2 = new JScrollPane(parametersTable);
+            JTabbedPane requestTabs = new JTabbedPane();
+            requestViewer = callbacks.createMessageEditor(null, false);
+            responseViewer = callbacks.createMessageEditor(null, false);
+            requestTabs.addTab("Request", requestViewer.getComponent());
+            requestTabs.addTab("Response", responseViewer.getComponent());
+            requestsSplitPane = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT);
+            requestsSplitPane.setResizeWeight(0.35f);
+            requestsSplitPane.setLeftComponent(scrollPane);
+            requestsSplitPane.setRightComponent(requestTabs);
 
-            splitPane.setLeftComponent(scrollPane);
-            splitPane2.setLeftComponent(scrollPane2);
 
-            // Tabs with request/response viewers
-            JTabbedPane tabs = new JTabbedPane();
-            requestViewer = callbacks.createMessageEditor(BurpExtender.this, false);
-            responseViewer = callbacks.createMessageEditor(BurpExtender.this, false);
-            tabs.addTab("Request", requestViewer.getComponent());
-            tabs.addTab("Response", responseViewer.getComponent());
+            parametersTable = new ParametersTable(parametersTableModel);
+            parametersTable.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+            JScrollPane paramsScrollPane = new JScrollPane(parametersTable);
 
-            splitPane.setRightComponent(splitPane2);
-            splitPane2.setRightComponent(tabs);
-            splitPane.setDividerLocation(0.5);
-            splitPane2.setDividerLocation(0.3);
+            JTabbedPane paramsTabs = new JTabbedPane();
+            paramsRequestViewer = callbacks.createMessageEditor(null, false);
+            paramsResponseViewer = callbacks.createMessageEditor(null, false);
+            paramsTabs.addTab("Request", paramsRequestViewer.getComponent());
+            paramsTabs.addTab("Response", paramsResponseViewer.getComponent());
+
+            paramsSplitPane = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT);
+            paramsSplitPane.setResizeWeight(0.35f);
+            paramsSplitPane.setLeftComponent(paramsScrollPane);
+            paramsSplitPane.setRightComponent(paramsTabs);
+            paramsSplitPane.setDividerLocation(0.5);
+
+            rootSplitPane = new JSplitPane(JSplitPane.VERTICAL_SPLIT);
+            rootSplitPane.setResizeWeight(0.4f);
+            rootSplitPane.setLeftComponent(requestsSplitPane);
+            rootSplitPane.setRightComponent(paramsSplitPane);
+            rootSplitPane.setDividerLocation(0.5);
 
             // Customize our UI components
-            callbacks.customizeUiComponent(splitPane);
-            callbacks.customizeUiComponent(splitPane2);
+            callbacks.customizeUiComponent(rootSplitPane);
+            callbacks.customizeUiComponent(requestsSplitPane);
+            callbacks.customizeUiComponent(paramsSplitPane);
             callbacks.customizeUiComponent(requestTable);
             callbacks.customizeUiComponent(parametersTable);
             callbacks.customizeUiComponent(scrollPane);
-            callbacks.customizeUiComponent(scrollPane2);
-            callbacks.customizeUiComponent(tabs);
+            callbacks.customizeUiComponent(paramsScrollPane);
+            callbacks.customizeUiComponent(requestTabs);
+            callbacks.customizeUiComponent(paramsTabs);
 
 
             // add the custom tab to Burp's UI
@@ -142,7 +150,6 @@ public class BurpExtender extends AbstractTableModel implements IBurpExtender, I
             stdout.println("Stateful Reflection plugin v0.01");
             stdout.println("Source: https://github.com/isaquevieira/stateful-reflected-parameters");
         });
-
     }
 
     @Override
@@ -152,7 +159,7 @@ public class BurpExtender extends AbstractTableModel implements IBurpExtender, I
 
     @Override
     public Component getUiComponent() {
-        return splitPane;
+        return rootSplitPane;
     }
 
     //
@@ -160,8 +167,9 @@ public class BurpExtender extends AbstractTableModel implements IBurpExtender, I
     //
     @Override
     public void processHttpMessage(int toolFlag, boolean messageIsRequest, IHttpRequestResponse messageInfo) {
-        analyzer.analyzeHttpResponse(toolFlag, messageIsRequest, messageInfo);
         ReflectedEntry entry = analyzer.analyzeHttpRequest(toolFlag, messageIsRequest, messageInfo);
+        analyzer.analyzeHttpResponse(toolFlag, messageIsRequest, messageInfo);
+
         if (entry != null) {
             synchronized (reflectedEntryList) {
                 int row = reflectedEntryList.size();
@@ -221,20 +229,20 @@ public class BurpExtender extends AbstractTableModel implements IBurpExtender, I
     // this allows our request/response viewers to obtain details about the messages being displayed
     //
 
-    @Override
-    public byte[] getRequest() {
-        return currentlyDisplayedItem.getRequest();
-    }
-
-    @Override
-    public byte[] getResponse() {
-        return currentlyDisplayedItem.getResponse();
-    }
-
-    @Override
-    public IHttpService getHttpService() {
-        return currentlyDisplayedItem.getHttpService();
-    }
+//    @Override
+//    public byte[] getRequest() {
+//        return currentlyDisplayedItem.getRequest();
+//    }
+//
+//    @Override
+//    public byte[] getResponse() {
+//        return currentlyDisplayedItem.getResponse();
+//    }
+//
+//    @Override
+//    public IHttpService getHttpService() {
+//        return currentlyDisplayedItem.getHttpService();
+//    }
 
 
     //
@@ -359,7 +367,7 @@ public class BurpExtender extends AbstractTableModel implements IBurpExtender, I
             ReflectedEntry reflectedEntry = reflectedEntryList.get(row);
             requestViewer.setMessage(reflectedEntry.requestResponse.getRequest(), true);
             responseViewer.setMessage("placeholder".getBytes(StandardCharsets.UTF_8), false);
-            currentlyDisplayedItem = reflectedEntry.requestResponse;
+            //currentlyDisplayedItem = reflectedEntry.requestResponse;
 
             // Reloading the Parameters list
             parametersTable.reloadValues(reflectedEntry.parameters);
@@ -384,6 +392,21 @@ public class BurpExtender extends AbstractTableModel implements IBurpExtender, I
 
         private void reloadValues(List<Param> params) {
             ((ParametersTableModel) this.getModel()).reloadValues(params);
+            if (params.size() > 0) {
+                changeSelection(0, 0, false, false);
+            }
+        }
+
+        @Override
+        public void changeSelection(int rowIndex, int columnIndex, boolean toggle, boolean extend) {
+            List<Param> params = ((ParametersTableModel) this.getModel()).params;
+            Param param = params.get(rowIndex);
+            paramsRequestViewer.setMessage(param.producer.response.getRequest(), true);
+            paramsResponseViewer.setMessage(param.producer.response.getResponse(), false);
+
+            currentlyDisplayedItem = param.producer.response;
+
+            super.changeSelection(rowIndex, columnIndex, toggle, extend);
         }
 
         @Override
