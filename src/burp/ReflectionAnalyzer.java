@@ -77,13 +77,14 @@ public class ReflectionAnalyzer {
         return false;
     }
 
-    public HistoryEntry isContainedOnRequestHistory(String key) {
+    public List<HistoryEntry> isContainedOnRequestHistory(String key) {
+        List<HistoryEntry> result = new ArrayList<>();
         for (HistoryEntry out : historicOfRequests) {
             if (checkIfAValueExistsInJSONObject(out.json, key)) {
-                return out;
+                result.add(out);
             }
         }
-        return null;
+        return result;
     }
 
     private boolean isFromAcceptedTool(int toolFlag) {
@@ -132,39 +133,34 @@ public class ReflectionAnalyzer {
         IHttpRequestResponseWithMarkers messageInfoMarked = callbacks.applyMarkers(messageInfo, null, null);
         List<int[]> requestMarkers = new ArrayList<>();
         List<int[]> responseMarkers = new ArrayList<>();
-        //List<String[]> parameters = new ArrayList<>();
-        //List<String> reflectedValues = new ArrayList<>();
         List<Param> parameters = new ArrayList<>();
 
         for (IParameter param : iRequest.getParameters()) {
-            stdout.println(param.getValue());
             if (param.getValue().isBlank()) {
                 continue;
             }
 
-            HistoryEntry producer = isContainedOnRequestHistory(param.getValue());
+            List<HistoryEntry> producer = isContainedOnRequestHistory(param.getValue());
 
-            if (producer != null) {
-                //reflectedValues.add(param.getValue());
+            if (producer.size() > 0) {
                 requestMarkers.add(new int[] {param.getValueStart(),param.getValueEnd()});
                 messageInfoMarked = callbacks.applyMarkers(messageInfo, requestMarkers, responseMarkers);
                 String[] paramValues = new String[]{param.getName(), param.getValue(), param.getValue()/*String.join(",", reflectedValues)*/};
-                parameters.add(new Param(producer, paramValues));
+
+                producer.forEach(item->parameters.add(new Param(item, paramValues)));
             }
         }
 
-        stdout.println(url);
         for (String param : getParamsFromURL(url)) {
             if (param.isBlank()) {
                 continue;
             }
 
-            HistoryEntry producer = isContainedOnRequestHistory(param);
+            List<HistoryEntry> producer = isContainedOnRequestHistory(param);
 
-            if (producer != null) {
-                //reflectedValues.add(param);
-                String[] paramValues = new String[]{param, param, param/*String.join(",", reflectedValues)*/};
-                parameters.add(new Param(producer, paramValues));
+            if (producer.size() > 0) {
+                String[] paramValues = new String[]{param, param, param};
+                producer.forEach(item->parameters.add(new Param(item, paramValues)));
             }
         }
 
@@ -172,15 +168,11 @@ public class ReflectionAnalyzer {
             return null;
         }
 
-        for (Param param : parameters) {
-            stdout.println(param);
-        }
-
         return new ReflectedEntry(
                 messageInfoMarked,
                 helpers.analyzeRequest(messageInfo).getUrl(),
                 helpers.analyzeRequest(messageInfo).getMethod(),
-                parameters, //.stream().map(p -> p.values).collect(Collectors.toList()),
+                parameters,
                 callbacks.getToolName(toolFlag)
         );
     }
